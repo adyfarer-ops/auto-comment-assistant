@@ -1,0 +1,332 @@
+// Webhook 转发服务 - 将飞书按钮点击转发给 auto-comment-assistant
+const express = require('express');
+const https = require('https');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+
+// 配置
+const appId = 'cli_a94a708865389ccf';
+const appSecret = '92EATRrZiJl1UQxkxguMedra1vADWUXz';
+const appToken = 'QQ9Cbui0eaixinsS62VcGN47nqc';
+const tableId = 'tbl0ZAW2xnK7o7Tl';
+const AGENT_ID = 'auto-comment-assistant';
+
+// 获取 tenant_access_token
+function getTenantAccessToken() {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({ app_id: appId, app_secret: appSecret });
+    const options = {
+      hostname: 'open.feishu.cn',
+      port: 443,
+      path: '/open-apis/auth/v3/tenant_access_token/internal',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': data.length }
+    };
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(body);
+          if (result.code === 0) resolve(result.tenant_access_token);
+          else reject(new Error(result.msg));
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+// 更新记录字段
+async function updateRecordField(token, recordId, fieldName, value) {
+  return new Promise((resolve) => {
+    const requestBody = { fields: { [fieldName]: value } };
+    const data = JSON.stringify(requestBody);
+    
+    const options = {
+      hostname: 'open.feishu.cn',
+      port: 443,
+      path: `/open-apis/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`,
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data)
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch(e) { resolve({ code: -1, msg: body }); }
+      });
+    });
+    req.on('error', () => resolve({ code: -1, msg: 'error' }));
+    req.write(data);
+    req.end();
+  });
+}
+
+// 执行浏览器自动化
+async function executeBrowserAutomation(data) {
+  console.log('\n🌐 正在执行浏览器自动化...');
+  console.log('链接:', data.product_link);
+  console.log('话术:', data.comment_script);
+  
+  try {
+    // 检查 Chrome 连接
+    const http = require('http');
+    const checkChrome = new Promise((resolve, reject) => {
+      const req = http.get('http://localhost:62030/json/version', (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const version = JSON.parse(data);
+            console.log('✅ Chrome 已连接:', version.Browser);
+            resolve(true);
+          } catch (e) {
+            reject(new Error('无法解析 Chrome 版本信息'));
+          }
+        });
+      });
+      req.on('error', (err) => reject(new Error('无法连接到 Chrome: ' + err.message)));
+      req.setTimeout(5000, () => reject(new Error('连接 Chrome 超时')));
+    });
+    
+    await checkChrome;
+    
+    // 创建自动化脚本
+    const puppeteerPath = require.resolve('puppeteer-core').replace(/\\/g, '\\\\');
+    const automationScript = `
+const puppeteer = require('${puppeteerPath}');
+
+(async () => {
+  try {
+    console.log('正在连接到 Chrome (localhost:62030)...');
+    const browser = await puppeteer.connect({
+      browserURL: 'http://localhost:62030',
+      defaultViewport: { width: 1280, height: 800 }
+    });
+    
+    console.log('✅ 已连接到本地 Chrome');
+    
+    const pages = await browser.pages();
+    let page = pages.find(p => p.url().includes('douyin.com'));
+    
+    if (!page) {
+      page = await browser.newPage();
+    }
+    
+    await page.bringToFront();
+    
+    console.log('正在打开链接: ${data.product_link}');
+    await page.goto('${data.product_link}', { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log('✅ 页面已加载');
+    
+    await page.bringToFront();
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const timestamp = Date.now();
+    const screenshotPath = '/tmp/comment_${data.record_id}_' + timestamp + '.png';
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    console.log('✅ 截图已保存:', screenshotPath);
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await browser.disconnect();
+    console.log('✅ 浏览器自动化完成');
+    
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ 自动化失败:', error.message);
+    process.exit(1);
+  }
+})();
+`;
+    
+    const fs = require('fs');
+    const scriptPath = `/tmp/automation_${data.record_id}.js`;
+    fs.writeFileSync(scriptPath, automationScript);
+    
+    console.log('🚀 正在执行浏览器自动化脚本...');
+    const { stdout, stderr } = await execPromise(`node ${scriptPath}`, { timeout: 120000 });
+    console.log('📤 自动化输出:');
+    console.log(stdout);
+    if (stderr) console.error('⚠️  警告:', stderr);
+    
+    return {
+      success: true,
+      message: '浏览器自动化执行完成',
+      output: stdout
+    };
+    
+  } catch (error) {
+    console.error('❌ 浏览器自动化失败:', error.message);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+// 处理评论任务
+async function handleCommentTask(data) {
+  console.log('\n========================================');
+  console.log('🤖 Auto-Comment Assistant 处理评论任务');
+  console.log('========================================');
+  console.log('时间:', new Date().toLocaleString());
+  console.log('记录ID:', data.record_id);
+  console.log('产品名称:', data.product_name);
+  console.log('产品链接:', data.product_link);
+  console.log('评论话术:', data.comment_script);
+  console.log('========================================\n');
+  
+  let token;
+  try {
+    token = await getTenantAccessToken();
+    
+    // 1. 更新状态为"处理中"
+    await updateRecordField(token, data.record_id, '状态', '处理中');
+    console.log('✅ 状态已更新为"处理中"');
+    
+    // 2. 执行浏览器自动化
+    const result = await executeBrowserAutomation(data);
+    
+    // 3. 更新状态和备注
+    if (result.success) {
+      await updateRecordField(token, data.record_id, '状态', '已完成');
+      await updateRecordField(token, data.record_id, '备注', 
+        `[${new Date().toLocaleString()}] 自动化执行完成\n${result.output}`);
+      console.log('✅ 任务完成');
+    } else {
+      await updateRecordField(token, data.record_id, '状态', '失败');
+      await updateRecordField(token, data.record_id, '备注', 
+        `[${new Date().toLocaleString()}] 执行失败：${result.message}`);
+      console.log('❌ 任务失败');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('✗ 处理失败:', error.message);
+    
+    try {
+      if (!token) token = await getTenantAccessToken();
+      await updateRecordField(token, data.record_id, '状态', '失败');
+      await updateRecordField(token, data.record_id, '备注', 
+        `[${new Date().toLocaleString()}] 执行失败：${error.message}`);
+    } catch(e) {}
+    
+    return { success: false, message: error.message };
+  }
+}
+
+// 处理评论请求
+async function handleCommentRequest(data) {
+  console.log('\n========================================');
+  console.log('🚀 收到评论请求');
+  console.log('========================================');
+  console.log('时间:', new Date().toLocaleString());
+  console.log('记录ID:', data.record_id);
+  console.log('产品名称:', data.product_name);
+  console.log('产品链接:', data.product_link);
+  console.log('评论话术:', data.comment_script);
+  console.log('========================================\n');
+  
+  try {
+    const token = await getTenantAccessToken();
+    
+    // 1. 更新状态为"进行中"
+    await updateRecordField(token, data.record_id, '状态', '进行中');
+    console.log('✅ 状态已更新为"进行中"');
+    
+    // 2. 直接执行评论任务（不再转发给 Gateway）
+    console.log('📤 开始执行评论任务...');
+    
+    // 异步执行，不阻塞响应
+    handleCommentTask(data).then(result => {
+      console.log('任务执行结果:', result);
+    }).catch(err => {
+      console.error('任务执行失败:', err);
+    });
+    
+    return { 
+      success: true, 
+      message: '请求已接收，正在处理中...'
+    };
+    
+  } catch (error) {
+    console.error('✗ 处理失败:', error.message);
+    
+    try {
+      const token = await getTenantAccessToken();
+      await updateRecordField(token, data.record_id, '状态', '已驳回');
+      await updateRecordField(token, data.record_id, '备注', 
+        `[${new Date().toLocaleString()}] 处理失败：${error.message}`);
+    } catch(e) {}
+    
+    return { success: false, message: error.message };
+  }
+}
+
+// 创建 Express 应用
+const app = express();
+const PORT = 3001;
+
+// 中间件
+app.use(express.json({ strict: false }));
+app.use(express.urlencoded({ extended: true }));
+
+// CORS
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
+
+// 健康检查
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    service: 'Webhook 转发服务',
+    target_agent: AGENT_ID
+  });
+});
+
+// 评论接口
+app.post('/comment', async (req, res) => {
+  try {
+    console.log('\n📥 收到请求');
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Body:', req.body);
+    
+    const data = req.body;
+    const result = await handleCommentRequest(data);
+    
+    res.json({
+      code: result.success ? 0 : -1,
+      msg: result.success ? 'success' : 'error',
+      data: result
+    });
+  } catch (error) {
+    console.error('❌ 处理请求失败:', error.message);
+    res.status(400).json({ code: -1, msg: error.message });
+  }
+});
+
+// 启动服务器
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('========================================');
+  console.log('🚀 Webhook 转发服务已启动');
+  console.log('========================================');
+  console.log(`📡 监听地址: http://0.0.0.0:${PORT}`);
+  console.log(`🌐 Webhook 地址: http://101.43.54.252:${PORT}/comment`);
+  console.log(`🤖 目标 Agent: ${AGENT_ID}`);
+  console.log('========================================');
+  console.log('\n⏳ 等待接收飞书请求...\n');
+});
