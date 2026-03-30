@@ -8,7 +8,7 @@ const fs = require('fs');
 const http = require('http');
 
 const SERVER_URL = 'ws://101.43.54.252:3003';
-const SCRIPT_DIR = __dirname;
+const SCRIPT_DIR = path.join(__dirname, '..', '..');
 
 console.log('========================================');
 console.log('🤖 Local Agent - 本地 Chrome 启动代理');
