@@ -724,32 +724,66 @@ async function handleDouyinNote(page, token, data, browser) {
     // 给自己的评论点赞
     console.log('[AUTO] Looking for like button on my comment...');
     try {
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 3000)); // 等待更长时间确保评论加载
 
-      // 查找刚发布的评论（包含"刚刚"文本的评论）
+      // 查找包含自己评论内容的评论
       let myComment = null;
+      const myCommentText = data.comment_script.substring(0, 20); // 取前20个字符匹配
+      
       try {
-        const commentHandle = await page.evaluateHandle(() => {
+        const commentHandle = await page.evaluateHandle((text) => {
           const comments = document.querySelectorAll('div[class*="comment-item"], div[data-e2e*="comment-item"]');
           for (const comment of comments) {
-            if (comment.textContent.includes('刚刚')) {
+            const commentText = comment.textContent || '';
+            // 匹配评论内容（前20个字符）
+            if (commentText.includes(text)) {
               return comment;
             }
           }
           return null;
-        });
+        }, myCommentText);
+        
         if (commentHandle) {
           myComment = commentHandle.asElement();
-          console.log('[AUTO] Found my comment (with 刚刚)');
+          console.log('[AUTO] Found my comment by content match:', myCommentText);
         }
       } catch(e) {
-        console.log('[AUTO] Error finding comment with 刚刚:', e.message);
+        console.log('[AUTO] Error finding comment by content:', e.message);
       }
 
-      // 如果没找到，尝试查找第一个评论
+      // 如果没找到，尝试查找包含"刚刚"的评论
       if (!myComment) {
-        myComment = await page.$('div[class*="comment-item"]:first-child, div[data-e2e*="comment-item"]:first-child');
-        console.log('[AUTO] Using first comment as fallback');
+        try {
+          const commentHandle = await page.evaluateHandle(() => {
+            const comments = document.querySelectorAll('div[class*="comment-item"], div[data-e2e*="comment-item"]');
+            for (const comment of comments) {
+              if (comment.textContent.includes('刚刚')) {
+                return comment;
+              }
+            }
+            return null;
+          });
+          if (commentHandle) {
+            myComment = commentHandle.asElement();
+            console.log('[AUTO] Found my comment (with 刚刚)');
+          }
+        } catch(e) {
+          console.log('[AUTO] Error finding comment with 刚刚:', e.message);
+        }
+      }
+
+      // 如果还是没找到，尝试查找第一个评论（但检查是否包含自己的评论内容）
+      if (!myComment) {
+        const firstComment = await page.$('div[class*="comment-item"]:first-child, div[data-e2e*="comment-item"]:first-child');
+        if (firstComment) {
+          const firstCommentText = await firstComment.evaluate(el => el.textContent || '');
+          if (firstCommentText.includes(myCommentText) || firstCommentText.includes('刚刚')) {
+            myComment = firstComment;
+            console.log('[AUTO] Using first comment (verified)');
+          } else {
+            console.log('[AUTO] First comment does not match my comment, skipping like');
+          }
+        }
       }
 
       if (myComment) {
@@ -767,56 +801,10 @@ async function handleDouyinNote(page, token, data, browser) {
         console.log('[AUTO] Like button search result:', likeButton ? 'found' : 'not found');
 
         if (likeButton) {
-          console.log('[AUTO] Found like button, getting details...');
-          try {
-            const tagName = await likeButton.evaluate(el => el.tagName);
-            let className = '';
-            try {
-              const rawClassName = await likeButton.evaluate(el => el.className);
-              if (typeof rawClassName === 'string') {
-                className = rawClassName;
-              } else if (rawClassName && rawClassName.baseVal) {
-                className = rawClassName.baseVal;
-              }
-            } catch(e) {}
-            console.log('[AUTO] Like button - tag:', tagName, 'class:', className.substring(0, 50));
-          } catch(e) {
-            console.log('[AUTO] Failed to get like button details:', e.message);
-          }
-
           console.log('[AUTO] Clicking like button...');
           try {
-            // 获取 SVG 的父元素（P 标签）
-            const parentP = await likeButton.evaluateHandle(el => {
-              let p = el;
-              while (p && p.tagName !== 'P') {
-                p = p.parentElement;
-              }
-              return p;
-            });
-
-            if (parentP) {
-              const pElement = parentP.asElement();
-              const box = await pElement.boundingBox();
-              if (box) {
-                console.log('[AUTO] Clicking at position:', box.x + box.width/2, box.y + box.height/2);
-                await page.mouse.click(box.x + box.width/2, box.y + box.height/2);
-                console.log('[AUTO] Liked my comment with mouse click!');
-              } else {
-                await pElement.evaluate(el => {
-                  el.click();
-                  el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                });
-                console.log('[AUTO] Liked my comment with JS click!');
-              }
-            } else {
-              await likeButton.evaluate(el => {
-                el.click();
-                el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-              });
-              console.log('[AUTO] Liked my comment with SVG click!');
-            }
-            // 发送反馈：已给自己评论点赞
+            await likeButton.click();
+            console.log('[AUTO] Liked my comment!');
             await sendProgressMessage(token, '👍 已给自己评论点赞', data);
           } catch(clickError) {
             console.log('[AUTO] Click failed:', clickError.message);
@@ -826,7 +814,7 @@ async function handleDouyinNote(page, token, data, browser) {
           console.log('[AUTO] Like button not found in comment');
         }
       } else {
-        console.log('[AUTO] My comment not found');
+        console.log('[AUTO] My comment not found, skipping like');
       }
     } catch (e) {
       console.log('[AUTO] Like failed:', e.message);
