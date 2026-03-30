@@ -112,10 +112,11 @@ function connect() {
         console.log('[AGENT] Script path:', scriptPath);
         console.log('[AGENT] Script exists:', fs.existsSync(scriptPath));
         
-        // 使用 spawn 启动脚本
-        const bat = spawn('cmd.exe', ['/c', scriptPath, index, localPort, sshPort, userDataDir], {
-          detached: true,
-          windowsHide: false
+        // 使用 spawn 启动脚本，在独立窗口中运行
+        const bat = spawn('cmd.exe', ['/c', 'start', scriptPath, index, localPort, sshPort, userDataDir], {
+          cwd: process.cwd(),
+          windowsHide: false,
+          shell: true
         });
         
         bat.stdout.on('data', (data) => {
