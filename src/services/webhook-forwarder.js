@@ -16,7 +16,7 @@ const {
   sendFeishuMessage,
   sendProgressMessage,
   detectContentType
-} = require('../utils');
+} = require('../utils/utils');
 
 // 序号到端口的映射
 function getPortsByIndex(index) {
