@@ -160,6 +160,14 @@ async function requestLocalAgentStart(index, maxWaitTime = 60000) {
 // 执行浏览器自动化
 async function executeBrowserAutomation(data, token) {
   console.log('[AUTO] Starting...');
+  
+  // 处理 product_link 可能是对象的情况
+  let productLink = data.product_link;
+  if (typeof productLink === 'object' && productLink !== null) {
+    productLink = productLink.link || productLink.url || productLink.href || '';
+  }
+  data.product_link = productLink;
+  
   console.log('[AUTO] Link:', data.product_link);
   console.log('[AUTO] Comment:', data.comment_script);
 
