@@ -8,7 +8,8 @@ const fs = require('fs');
 const http = require('http');
 
 const SERVER_URL = 'ws://101.43.54.252:3003';
-const SCRIPT_DIR = path.resolve(__dirname, '..', '..');
+// Windows 下使用 process.cwd() 获取工作目录
+const SCRIPT_DIR = process.cwd();
 
 console.log('========================================');
 console.log('🤖 Local Agent - 本地 Chrome 启动代理');
