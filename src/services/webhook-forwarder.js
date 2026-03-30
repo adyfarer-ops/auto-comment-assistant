@@ -194,6 +194,62 @@ async function closeSSHTunnel(index) {
   });
 }
 
+// 关闭 CMD 窗口（通过窗口标题）
+async function closeCMDWindow(index) {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    
+    // 查找包含 "SSH Tunnel" 和序号的 CMD 窗口
+    const findCmd = `tasklist /V /FI "IMAGENAME eq cmd.exe" /FO CSV | findstr "SSH Tunnel ${index}"`;
+    
+    exec(findCmd, (error, stdout, stderr) => {
+      if (error || !stdout) {
+        console.log(`[CLOSE] No CMD window found for index ${index}`);
+        resolve();
+        return;
+      }
+      
+      // 解析 CSV 输出获取 PID
+      const lines = stdout.trim().split('\n');
+      const pids = [];
+      
+      for (const line of lines) {
+        const parts = line.split('","');
+        if (parts.length > 1) {
+          const pid = parts[1].replace(/"/g, '');
+          if (pid && !isNaN(parseInt(pid))) {
+            pids.push(pid);
+          }
+        }
+      }
+      
+      if (pids.length === 0) {
+        console.log(`[CLOSE] No CMD window PID found for index ${index}`);
+        resolve();
+        return;
+      }
+      
+      // 杀死这些 CMD 进程
+      let killed = 0;
+      for (const pid of pids) {
+        const killCmd = `taskkill /F /PID ${pid}`;
+        exec(killCmd, (err) => {
+          killed++;
+          if (err) {
+            console.log(`[CLOSE] Failed to kill CMD PID ${pid}: ${err.message}`);
+          } else {
+            console.log(`[CLOSE] Killed CMD window PID ${pid}`);
+          }
+          if (killed === pids.length) {
+            console.log(`[CLOSE] CMD windows for index ${index} closed`);
+            resolve();
+          }
+        });
+      }
+    });
+  });
+}
+
 // 获取记录详情
 async function getRecordDetail(token, recordId, tableId) {
   return new Promise((resolve) => {
@@ -538,6 +594,14 @@ async function executeBrowserAutomation(data, token) {
       console.log('[AUTO] Failed to close SSH tunnel:', e.message);
     }
     
+    // 关闭 CMD 窗口
+    console.log('[AUTO] Closing CMD window...');
+    try {
+      await closeCMDWindow(index);
+    } catch(e) {
+      console.log('[AUTO] Failed to close CMD window:', e.message);
+    }
+    
     return { success: true, screenshotPath };
 
   } catch (error) {
@@ -551,6 +615,9 @@ async function executeBrowserAutomation(data, token) {
     } catch(e) {}
     try {
       await closeSSHTunnel(index);
+    } catch(e) {}
+    try {
+      await closeCMDWindow(index);
     } catch(e) {}
     return { success: false, message: error.message };
   }
