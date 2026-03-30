@@ -298,6 +298,88 @@ async function inputAndSendComment(page, commentInput, data, token, contentType)
       // 发送反馈：评论已发送
       await sendProgressMessage(token, '📤 评论已发送', data);
       console.log('[AUTO] Sent!');
+      
+      // 等待2秒后检查是否出现验证码弹窗
+      await new Promise(r => setTimeout(r, 2000));
+      
+      // 检查验证码弹窗
+      console.log('[AUTO] Checking for verification popup after send...');
+      const verificationSelectors = [
+        'div[class*="verify"]',
+        'div[class*="captcha"]',
+        'div:has-text("接收短信验证码")',
+        'div:has-text("请输入验证码")',
+        'input[placeholder*="验证码"]',
+        'div[class*="mask"]',
+        'div[class*="modal"]',
+        'div[class*="dialog"]'
+      ];
+      
+      let hasVerification = false;
+      for (const selector of verificationSelectors) {
+        try {
+          const popup = await page.$(selector);
+          if (popup) {
+            const text = await popup.evaluate(el => el.textContent || '');
+            const placeholder = await popup.evaluate(el => el.placeholder || '');
+            if (text.includes('验证码') || text.includes('验证') || text.includes('短信') ||
+                placeholder.includes('验证码') || placeholder.includes('短信')) {
+              console.log('[AUTO] Found verification popup after send:', selector);
+              hasVerification = true;
+              break;
+            }
+          }
+        } catch(e) {}
+      }
+      
+      // 如果检测到验证码，等待用户完成验证
+      if (hasVerification) {
+        console.log('[AUTO] Verification required after sending comment');
+        await sendProgressMessage(token, '🔒 发送评论需要验证，请手动完成验证（最多等待5分钟）', data);
+        await updateRecordField(token, data.record_id, '状态', '待验证');
+        
+        let verifyWaitTime = 0;
+        const maxVerifyWait = 5 * 60 * 1000;
+        const verifyCheckInterval = 5000;
+        let verificationCleared = false;
+        
+        while (verifyWaitTime < maxVerifyWait && !verificationCleared) {
+          await new Promise(r => setTimeout(r, verifyCheckInterval));
+          verifyWaitTime += verifyCheckInterval;
+          
+          // 检查验证码弹窗是否消失
+          let popupStillExists = false;
+          for (const selector of verificationSelectors) {
+            try {
+              const popup = await page.$(selector);
+              if (popup) {
+                const text = await popup.evaluate(el => el.textContent || '');
+                if (text.includes('验证码') || text.includes('验证')) {
+                  popupStillExists = true;
+                  break;
+                }
+              }
+            } catch(e) {}
+          }
+          
+          if (!popupStillExists) {
+            console.log('[AUTO] Verification popup cleared');
+            verificationCleared = true;
+            await sendProgressMessage(token, '✅ 验证已完成，继续执行', data);
+          }
+          
+          // 每30秒发送一次等待提示
+          if (verifyWaitTime % 30000 === 0) {
+            const remainingTime = Math.ceil((maxVerifyWait - verifyWaitTime) / 1000);
+            await sendProgressMessage(token, `⏳ 等待验证完成...剩余${remainingTime}秒`, data);
+          }
+        }
+        
+        if (!verificationCleared) {
+          console.log('[AUTO] Verification timeout');
+          return { success: false, message: '验证超时' };
+        }
+      }
     } else {
       return { success: false, message: '点击发送按钮失败' };
     }
