@@ -784,22 +784,27 @@ async function handleCommentTask(data) {
   console.log('Table ID:', data.table_id);
   console.log('========================================\n');
 
-  // 如果 table_id 无效，使用默认
+  // 使用传来的 table_id，如果没有则使用默认
   let effectiveTableId = data.table_id || CONFIG.tableId;
-  
-  // 尝试验证 table_id 是否有效
-  const token = await getTenantAccessToken();
-  const testRecord = await getRecordDetail(token, data.record_id, effectiveTableId);
-  if (testRecord.code !== 0 && effectiveTableId !== CONFIG.tableId) {
-    console.log('[TASK] Provided table_id invalid, using default:', CONFIG.tableId);
-    effectiveTableId = CONFIG.tableId;
-    data.table_id = CONFIG.tableId; // 更新 data 中的 table_id
-  }
+  console.log('[TASK] Using table_id:', effectiveTableId);
   
   setCurrentTableId(effectiveTableId);
 
   try {
-    await updateRecordField(token, data.record_id, '状态', '处理中');
+    const token = await getTenantAccessToken();
+    
+    // 尝试更新状态为处理中
+    const updateResult = await updateRecordField(token, data.record_id, '状态', '处理中');
+    
+    // 如果更新失败且使用了传来的 table_id，尝试使用默认表格
+    if (updateResult.code !== 0 && effectiveTableId !== CONFIG.tableId) {
+      console.log('[TASK] Update failed with provided table_id, trying default:', CONFIG.tableId);
+      effectiveTableId = CONFIG.tableId;
+      data.table_id = CONFIG.tableId;
+      setCurrentTableId(effectiveTableId);
+      await updateRecordField(token, data.record_id, '状态', '处理中');
+    }
+    
     console.log('[TASK] Processing...');
 
     const result = await executeBrowserAutomation(data, token);
