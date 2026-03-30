@@ -2,8 +2,10 @@
 // 功能：接收服务器命令，自动启动 Chrome
 
 const WebSocket = require('ws');
-const { exec } = require('child_process');
+const { spawn, exec } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const http = require('http');
 
 const SERVER_URL = 'ws://101.43.54.252:3003';
 const SCRIPT_DIR = __dirname;
@@ -15,18 +17,66 @@ console.log('Server:', SERVER_URL);
 console.log('Script Dir:', SCRIPT_DIR);
 console.log('========================================\n');
 
-// 测试 child_process 是否可用
-console.log('[TEST] Testing child_process...');
-exec('echo test', (err, stdout) => {
-  if (err) {
-    console.error('[TEST] child_process error:', err);
-  } else {
-    console.log('[TEST] child_process OK:', stdout.trim());
-  }
-});
-
 let ws = null;
 let reconnectInterval = 5000;
+
+// 检查 Chrome 是否就绪
+async function checkChromeReady(localPort, maxWait = 30000) {
+  return new Promise((resolve) => {
+    const checkInterval = 1000;
+    let waited = 0;
+    
+    const check = () => {
+      const req = http.request({
+        hostname: 'localhost',
+        port: localPort,
+        path: '/json/version',
+        method: 'GET',
+        timeout: 2000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.Browser) {
+              console.log(`[AGENT] Chrome is ready on port ${localPort}`);
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          } catch (e) {
+            resolve(false);
+          }
+        });
+      });
+      
+      req.on('error', () => {
+        if (waited >= maxWait) {
+          console.log(`[AGENT] Timeout waiting for Chrome on port ${localPort}`);
+          resolve(false);
+        } else {
+          waited += checkInterval;
+          setTimeout(check, checkInterval);
+        }
+      });
+      
+      req.on('timeout', () => {
+        req.destroy();
+        if (waited >= maxWait) {
+          resolve(false);
+        } else {
+          waited += checkInterval;
+          setTimeout(check, checkInterval);
+        }
+      });
+      
+      req.end();
+    };
+    
+    check();
+  });
+}
 
 function connect() {
   console.log('[AGENT] Connecting to server...');
@@ -43,7 +93,7 @@ function connect() {
     }));
   });
   
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     try {
       const cmd = JSON.parse(data);
       console.log('[AGENT] Received command:', cmd);
@@ -56,18 +106,15 @@ function connect() {
         console.log(`  SSH Port: ${sshPort}`);
         console.log(`  User Data: ${userDataDir}`);
         
-        // Windows 脚本
         const scriptPath = path.join(SCRIPT_DIR, 'start-chrome-by-index.bat');
-        const command = `"${scriptPath}" ${index} ${localPort} ${sshPort} ${userDataDir}`;
         
-        console.log('[AGENT] Command:', command);
-        console.log('[AGENT] Script exists:', require('fs').existsSync(scriptPath));
+        console.log('[AGENT] Script path:', scriptPath);
+        console.log('[AGENT] Script exists:', fs.existsSync(scriptPath));
         
-        // 使用 spawn 代替 exec，更好地处理输出
-        const { spawn } = require('child_process');
+        // 使用 spawn 启动脚本
         const bat = spawn('cmd.exe', ['/c', scriptPath, index, localPort, sshPort, userDataDir], {
           detached: true,
-          windowsHide: false  // 显示窗口以便调试
+          windowsHide: false
         });
         
         bat.stdout.on('data', (data) => {
@@ -86,8 +133,16 @@ function connect() {
           console.error('[AGENT] Failed to start:', err);
         });
         
-        // 发送就绪状态
-        setTimeout(() => {
+        // 等待脚本执行完成（约15秒）
+        console.log('[AGENT] Waiting for script to complete...');
+        await new Promise(r => setTimeout(r, 15000));
+        
+        // 检查 Chrome 是否真的就绪
+        console.log('[AGENT] Checking if Chrome is really ready...');
+        const isReady = await checkChromeReady(localPort, 10000);
+        
+        if (isReady) {
+          console.log(`[AGENT] Chrome ${index} is confirmed ready!`);
           ws.send(JSON.stringify({
             type: 'chrome-status',
             status: 'ready',
@@ -95,7 +150,15 @@ function connect() {
             localPort: localPort,
             sshPort: sshPort
           }));
-        }, 8000);
+        } else {
+          console.log(`[AGENT] Chrome ${index} failed to start properly`);
+          ws.send(JSON.stringify({
+            type: 'chrome-status',
+            status: 'error',
+            index: index,
+            error: 'Chrome not responding'
+          }));
+        }
       }
     } catch (e) {
       console.error('[AGENT] Failed to parse message:', e.message);
