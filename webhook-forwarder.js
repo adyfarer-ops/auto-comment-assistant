@@ -502,9 +502,22 @@ async function handleCommentTask(data) {
   console.log('\n========================================');
   console.log('Task:', data.record_id);
   console.log('Product:', data.product_name);
+  console.log('Table ID:', data.table_id);
   console.log('========================================\n');
 
-  setCurrentTableId(data.table_id);
+  // 如果 table_id 无效，使用默认
+  let effectiveTableId = data.table_id || CONFIG.tableId;
+  
+  // 尝试验证 table_id 是否有效
+  const token = await getTenantAccessToken();
+  const testRecord = await getRecordDetail(token, data.record_id, effectiveTableId);
+  if (testRecord.code !== 0 && effectiveTableId !== CONFIG.tableId) {
+    console.log('[TASK] Provided table_id invalid, using default:', CONFIG.tableId);
+    effectiveTableId = CONFIG.tableId;
+    data.table_id = CONFIG.tableId; // 更新 data 中的 table_id
+  }
+  
+  setCurrentTableId(effectiveTableId);
 
   let token;
   try {
@@ -595,7 +608,17 @@ async function handleCommentRequest(data) {
 
     // 获取记录详情（包含序号等字段）
     console.log('[REQUEST] Fetching record detail...');
-    const recordDetail = await getRecordDetail(token, data.record_id, data.table_id);
+    let recordDetail = await getRecordDetail(token, data.record_id, data.table_id);
+
+    // 如果失败，尝试使用默认表格 ID
+    if (recordDetail.code !== 0 && data.table_id !== CONFIG.tableId) {
+      console.log('[REQUEST] Failed with provided table_id, trying default...');
+      recordDetail = await getRecordDetail(token, data.record_id, CONFIG.tableId);
+      if (recordDetail.code === 0) {
+        data.table_id = CONFIG.tableId;
+        console.log('[REQUEST] Using default table_id:', CONFIG.tableId);
+      }
+    }
 
     if (recordDetail.code === 0 && recordDetail.data && recordDetail.data.record) {
       const record = recordDetail.data.record;
