@@ -170,7 +170,7 @@ async function executeBrowserAutomation(data, token) {
   console.log(`[AUTO] Using index ${index}: local=${localPort}, ssh=${sshPort}, dir=${userDataDir}`);
   await sendProgressMessage(token, `🔢 使用账号序号: ${index} (端口: ${sshPort})`, data);
 
-  const contentType = detectContentTypeLocal(data.product_link);
+  const contentType = detectContentType(data.product_link);
   console.log(`[AUTO] Content type: ${contentType.name} (${contentType.platform}/${contentType.type})`);
   await sendProgressMessage(token, `📱 识别平台: ${contentType.name}`, data);
 
@@ -248,7 +248,7 @@ async function executeBrowserAutomation(data, token) {
     // 页面打开后，重新检测实际的内容类型
     const actualUrl = page.url();
     console.log('[AUTO] Actual URL:', actualUrl);
-    const actualContentType = detectContentTypeLocal(actualUrl);
+    const actualContentType = detectContentType(actualUrl);
     if (actualContentType.type !== contentType.type) {
       console.log(`[AUTO] Content type corrected: ${actualContentType.name}`);
       await sendProgressMessage(token, `📱 修正平台类型: ${actualContentType.name}`, data);
