@@ -1,7 +1,7 @@
 // platforms/douyin-note.js - 抖音图文处理逻辑（简化版，与视频保持一致）
 const { sendProgressMessage, updateRecordField } = require('../utils/utils');
 
-// 抖音图文处理流程（简化，与视频保持一致）
+// 抖音图文处理流程（点击评论tab，其他与视频一致）
 async function handleDouyinNote(page, token, data, browser) {
   console.log('[AUTO] Handling Douyin Note...');
   await sendProgressMessage(token, '📝 处理抖音图文...', data);
@@ -9,14 +9,50 @@ async function handleDouyinNote(page, token, data, browser) {
   // 等待页面加载
   await new Promise(r => setTimeout(r, 2000));
 
-  // 滚动到页面底部找评论区（和视频一样）
+  // 点击"评论"tab
+  console.log('[AUTO] Clicking comment tab...');
+  
+  const result = await page.evaluate(() => {
+    const tabSelectors = [
+      'div[class*="cxpsBymd"]',
+      'div[class*="kNtvycrk"]',
+      'div[role="tab"]'
+    ];
+
+    for (const selector of tabSelectors) {
+      const elements = document.querySelectorAll(selector);
+      for (const el of elements) {
+        const text = el.textContent || '';
+        if (text.match(/评论\s*\(\d+\)/)) {
+          const rect = el.getBoundingClientRect();
+          if (rect.y > 100 && rect.y < 600) {
+            el.click();
+            return { found: true, text: text.substring(0, 30) };
+          }
+        }
+      }
+    }
+    return { found: false };
+  });
+
+  if (result.found) {
+    console.log('[AUTO] Clicked comment tab:', result.text);
+    await sendProgressMessage(token, '✅ 已点击评论tab', data);
+  } else {
+    console.log('[AUTO] Comment tab not found, will try scrolling');
+  }
+
+  // 等待页面切换
+  await new Promise(r => setTimeout(r, 2000));
+
+  // 滚动到页面底部找评论区
   console.log('[AUTO] Scrolling to find comment area...');
   await page.evaluate(() => {
     window.scrollTo(0, document.body.scrollHeight);
   });
   await new Promise(r => setTimeout(r, 1500));
 
-  // 使用通用的查找评论框逻辑（传入类型）
+  // 使用通用的查找评论框逻辑
   return await findCommentInput(page, 'note', token, data);
 }
 
