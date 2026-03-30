@@ -577,6 +577,13 @@ async function executeBrowserAutomation(data, token) {
       const noteResult = await handleDouyinNote(page, token, data, browser);
       if (noteResult && noteResult.success) {
         console.log('[AUTO] Douyin Note completed successfully');
+        // 关闭浏览器、SSH隧道和CMD窗口
+        console.log('[AUTO] Closing browser...');
+        try { await closeBrowser(index); } catch(e) {}
+        console.log('[AUTO] Closing SSH tunnel...');
+        try { await closeSSHTunnel(index); } catch(e) {}
+        console.log('[AUTO] Closing CMD window...');
+        try { await closeCMDWindow(index); } catch(e) {}
         return noteResult;
       }
       if (noteResult && noteResult.commentInput) {
