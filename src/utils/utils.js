@@ -9,7 +9,7 @@ const CONFIG = {
   appSecret: 'NyEi5RuX4YU2YJ4nNsFFwfetvWjpmRiS',
   appToken: 'QQ9Cbui0eaixinsS62VcGN47nqc',
   tableId: 'tbl5ovriK4ieq4sb',
-  tableIds: ['tbl5ovriK4ieq4sb', 'tbl0ZAW2xnK7o7Tl'],
+  tableIds: ['tbl5ovriK4ieq4sb', 'tbl0ZAW2xnK7o7Tl', 'tbloAMKTfaRInhg6'],
   CHAT_ID: 'oc_b8f9287e7c024fb9a7dfa274d1edc8d1'
 };
 
