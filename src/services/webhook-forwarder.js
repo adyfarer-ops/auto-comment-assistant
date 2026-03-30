@@ -18,6 +18,79 @@ const {
   detectContentType
 } = require('../utils/utils');
 
+// 任务队列
+const taskQueue = [];
+let isProcessing = false;
+
+// 添加任务到队列
+function addToQueue(taskData) {
+  return new Promise((resolve, reject) => {
+    const task = {
+      data: taskData,
+      resolve,
+      reject,
+      id: Date.now() + Math.random().toString(36).substr(2, 9)
+    };
+    taskQueue.push(task);
+    console.log(`[QUEUE] Task ${task.id} added. Queue length: ${taskQueue.length}`);
+    
+    // 通知用户任务已排队
+    sendQueueStatusNotification(taskData, taskQueue.length);
+    
+    processQueue();
+  });
+}
+
+// 发送队列状态通知
+async function sendQueueStatusNotification(data, position) {
+  try {
+    const token = await getTenantAccessToken();
+    if (position === 1) {
+      await sendProgressMessage(token, '📋 任务已添加到队列，正在执行...', data);
+    } else {
+      await sendProgressMessage(token, `📋 任务已添加到队列，当前排在第 ${position} 位，请稍候...`, data);
+    }
+  } catch (e) {
+    console.log('[QUEUE] Failed to send queue status:', e.message);
+  }
+}
+
+// 处理队列
+async function processQueue() {
+  if (isProcessing || taskQueue.length === 0) {
+    return;
+  }
+  
+  isProcessing = true;
+  const task = taskQueue.shift();
+  
+  console.log(`[QUEUE] Processing task ${task.id}. Remaining: ${taskQueue.length}`);
+  
+  try {
+    // 通知下一个任务开始执行
+    if (taskQueue.length > 0) {
+      const token = await getTenantAccessToken();
+      await sendProgressMessage(token, '📋 开始执行当前任务...', task.data);
+    }
+    
+    const result = await handleCommentTask(task.data);
+    task.resolve(result);
+  } catch (error) {
+    console.error(`[QUEUE] Task ${task.id} failed:`, error.message);
+    task.reject(error);
+  } finally {
+    isProcessing = false;
+    
+    // 继续处理下一个任务
+    if (taskQueue.length > 0) {
+      console.log(`[QUEUE] ${taskQueue.length} tasks remaining, processing next...`);
+      setTimeout(processQueue, 2000); // 2秒间隔
+    } else {
+      console.log('[QUEUE] All tasks completed');
+    }
+  }
+}
+
 // 序号到端口的映射
 function getPortsByIndex(index) {
   const baseLocalPort = 9000;
@@ -809,7 +882,9 @@ app.get('/', (req, res) => {
 app.post('/comment', async (req, res) => {
   try {
     console.log('\n[HTTP] POST /comment');
-    const result = await handleCommentRequest(req.body);
+    
+    // 将任务添加到队列
+    const result = await addToQueue(req.body);
     res.json({ code: result.success ? 0 : -1, msg: result.success ? 'success' : 'error', data: result });
   } catch (error) {
     console.error('[HTTP] Error:', error.message);
