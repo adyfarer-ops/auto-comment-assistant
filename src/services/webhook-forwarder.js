@@ -50,6 +50,62 @@ async function closeBrowser(index) {
   });
 }
 
+// 关闭指定序号的 SSH 隧道
+async function closeSSHTunnel(index) {
+  return new Promise((resolve) => {
+    const { sshPort } = getPortsByIndex(index);
+    
+    // 使用 taskkill 关闭占用该 SSH 端口的进程
+    const { exec } = require('child_process');
+    
+    // 先找到占用端口的进程
+    const findCmd = `netstat -ano | findstr :${sshPort}`;
+    
+    exec(findCmd, (error, stdout, stderr) => {
+      if (error || !stdout) {
+        console.log(`[CLOSE] SSH tunnel ${index} (port ${sshPort}) may already be closed`);
+        resolve();
+        return;
+      }
+      
+      // 解析输出获取 PID
+      const lines = stdout.trim().split('\n');
+      const pids = new Set();
+      
+      for (const line of lines) {
+        const match = line.match(/LISTENING\s+(\d+)/);
+        if (match) {
+          pids.add(match[1]);
+        }
+      }
+      
+      if (pids.size === 0) {
+        console.log(`[CLOSE] No SSH tunnel found for port ${sshPort}`);
+        resolve();
+        return;
+      }
+      
+      // 杀死这些进程
+      let killed = 0;
+      for (const pid of pids) {
+        const killCmd = `taskkill /F /PID ${pid}`;
+        exec(killCmd, (err) => {
+          killed++;
+          if (err) {
+            console.log(`[CLOSE] Failed to kill PID ${pid}: ${err.message}`);
+          } else {
+            console.log(`[CLOSE] Killed SSH tunnel PID ${pid}`);
+          }
+          if (killed === pids.size) {
+            console.log(`[CLOSE] SSH tunnel ${index} (port ${sshPort}) closed`);
+            resolve();
+          }
+        });
+      }
+    });
+  });
+}
+
 // 获取记录详情
 async function getRecordDetail(token, recordId, tableId) {
   return new Promise((resolve) => {
@@ -373,10 +429,17 @@ async function executeBrowserAutomation(data, token) {
     // 关闭浏览器（但保留用户数据）
     console.log('[AUTO] Closing browser...');
     try {
-      // 使用本地代理关闭浏览器
       await closeBrowser(index);
     } catch(e) {
       console.log('[AUTO] Failed to close browser:', e.message);
+    }
+    
+    // 关闭 SSH 隧道
+    console.log('[AUTO] Closing SSH tunnel...');
+    try {
+      await closeSSHTunnel(index);
+    } catch(e) {
+      console.log('[AUTO] Failed to close SSH tunnel:', e.message);
     }
     
     return { success: true, screenshotPath };
@@ -386,9 +449,12 @@ async function executeBrowserAutomation(data, token) {
     if (browser) {
       try { await browser.disconnect(); } catch(e) {}
     }
-    // 失败时也关闭浏览器
+    // 失败时也关闭浏览器和 SSH
     try {
       await closeBrowser(index);
+    } catch(e) {}
+    try {
+      await closeSSHTunnel(index);
     } catch(e) {}
     return { success: false, message: error.message };
   }
