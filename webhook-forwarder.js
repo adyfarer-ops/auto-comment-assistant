@@ -519,9 +519,7 @@ async function handleCommentTask(data) {
   
   setCurrentTableId(effectiveTableId);
 
-  let token;
   try {
-    token = await getTenantAccessToken();
     await updateRecordField(token, data.record_id, '状态', '处理中');
     console.log('[TASK] Processing...');
 
