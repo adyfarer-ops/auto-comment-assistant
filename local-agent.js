@@ -133,9 +133,9 @@ function connect() {
           console.error('[AGENT] Failed to start:', err);
         });
         
-        // 等待脚本执行完成（约15秒）
+        // 等待脚本执行完成（约35秒，确保隧道建立）
         console.log('[AGENT] Waiting for script to complete...');
-        await new Promise(r => setTimeout(r, 15000));
+        await new Promise(r => setTimeout(r, 35000));
         
         // 检查 Chrome 是否真的就绪
         console.log('[AGENT] Checking if Chrome is really ready...');
