@@ -67,11 +67,11 @@ async function getRecordDetail(token, recordId, tableId) {
 
 // 请求本地代理启动 Chrome
 async function requestLocalAgentStart(index, maxWaitTime = 60000) {
-  const https = require('https');
-  
+  const http = require('http');
+
   return new Promise((resolve) => {
     console.log(`[AGENT] Requesting local agent to start Chrome ${index}...`);
-    
+
     const data = JSON.stringify({});
     const options = {
       hostname: 'localhost',
@@ -83,23 +83,23 @@ async function requestLocalAgentStart(index, maxWaitTime = 60000) {
         'Content-Length': data.length
       }
     };
-    
-    const req = https.request(options, (res) => {
+
+    const req = http.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => body += chunk);
       res.on('end', () => {
         try {
           const result = JSON.parse(body);
           console.log('[AGENT] Start request result:', result);
-          
+
           if (result.success) {
             // 等待 Chrome 启动完成
             console.log(`[AGENT] Waiting for Chrome ${index} to be ready...`);
             const checkInterval = 2000;
             let waited = 0;
-            
+
             const checkReady = () => {
-              const checkReq = https.request({
+              const checkReq = http.request({
                 hostname: 'localhost',
                 port: 3004,
                 path: `/chrome-status/${index}`,
@@ -136,7 +136,7 @@ async function requestLocalAgentStart(index, maxWaitTime = 60000) {
               });
               checkReq.end();
             };
-            
+
             setTimeout(checkReady, 5000); // 先等 5 秒让 Chrome 启动
           } else {
             resolve({ success: false, message: result.message });
@@ -146,12 +146,12 @@ async function requestLocalAgentStart(index, maxWaitTime = 60000) {
         }
       });
     });
-    
+
     req.on('error', (err) => {
       console.error('[AGENT] Request error:', err.message);
       resolve({ success: false, message: err.message });
     });
-    
+
     req.write(data);
     req.end();
   });
@@ -193,19 +193,19 @@ async function executeBrowserAutomation(data, token) {
     } catch (connectError) {
       console.log(`[AUTO] Connection failed: ${connectError.message}`);
       connectRetries++;
-      
+
       if (connectRetries <= maxConnectRetries) {
         // 尝试通过本地代理启动 Chrome
         console.log('[AUTO] Trying to start Chrome via local agent...');
         await sendProgressMessage(token, '🚀 Chrome 未运行，正在通知本地启动...', data);
-        
+
         const startResult = await requestLocalAgentStart(index);
         if (!startResult.success) {
           console.log('[AUTO] Failed to start Chrome via agent:', startResult.message);
           await sendProgressMessage(token, '❌ 本地启动 Chrome 失败，请手动启动', data);
           return { success: false, message: 'Chrome 启动失败: ' + startResult.message };
         }
-        
+
         // 等待一段时间再重试连接
         console.log('[AUTO] Waiting for Chrome to start...');
         await new Promise(r => setTimeout(r, 8000));
