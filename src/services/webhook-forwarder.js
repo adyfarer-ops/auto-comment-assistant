@@ -22,11 +22,26 @@ const {
 function getPortsByIndex(index) {
   const baseLocalPort = 9000;
   const baseSSHPort = 62000;
+  
+  // 为不同序号分配不同的标识颜色
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', 
+    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52BE80',
+    '#EC7063', '#5DADE2', '#48C9B0', '#F5B041', '#AF7AC5',
+    '#5499C7', '#58D68D', '#F4D03F', '#EB984E', '#A569BD',
+    '#E74C3C', '#3498DB', '#1ABC9C', '#F39C12', '#9B59B6',
+    '#2980B9', '#27AE60', '#F1C40F', '#E67E22', '#8E44AD',
+    '#C0392B', '#2874A6', '#117A65', '#D68910', '#7D3C98',
+    '#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A4C93',
+    '#1B4965', '#5FA8D3', '#62B6CB', '#BEE9E8', '#CAE9FF',
+    '#5C374C', '#985277', '#CE6A85', '#F2A0A1', '#EFD5C3'
+  ];
 
   return {
     localPort: baseLocalPort + index,      // 9001, 9002, ...
     sshPort: baseSSHPort + index,          // 62001, 62002, ...
-    userDataDir: `account_${index}`         // account_1, account_2, ...
+    userDataDir: `account_${index}`,         // account_1, account_2, ...
+    color: colors[(index - 1) % colors.length] // 循环使用颜色
   };
 }
 
@@ -311,6 +326,14 @@ async function executeBrowserAutomation(data, token) {
     }
 
     await page.bringToFront();
+    
+    // 打开颜色标识页面（让用户区分不同账号）
+    const { color } = getPortsByIndex(index);
+    console.log(`[AUTO] Opening color marker page (index ${index}, color ${color})...`);
+    await page.goto(`data:text/html,<html><head><title>账号 ${index}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:${color};font-family:Arial;font-size:48px;color:white;text-shadow:2px 2px 4px rgba(0,0,0,0.5);"><div>🤖 账号 ${index}</div></body></html>`, {
+      waitUntil: 'networkidle0'
+    });
+    await new Promise(r => setTimeout(r, 2000));
 
     // 打开链接
     console.log('[AUTO] Opening page...');
