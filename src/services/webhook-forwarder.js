@@ -30,6 +30,26 @@ function getPortsByIndex(index) {
   };
 }
 
+// 关闭指定序号的浏览器
+async function closeBrowser(index) {
+  return new Promise((resolve) => {
+    const { userDataDir } = getPortsByIndex(index);
+    
+    // 使用 taskkill 关闭对应窗口标题的 Chrome
+    const { exec } = require('child_process');
+    const cmd = `taskkill /F /IM chrome.exe /FI "WINDOWTITLE eq Chrome*${userDataDir}*"`;
+    
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) {
+        console.log(`[CLOSE] Browser ${index} may already be closed`);
+      } else {
+        console.log(`[CLOSE] Browser ${index} closed successfully`);
+      }
+      resolve();
+    });
+  });
+}
+
 // 获取记录详情
 async function getRecordDetail(token, recordId, tableId) {
   return new Promise((resolve) => {
@@ -349,6 +369,16 @@ async function executeBrowserAutomation(data, token) {
     console.log('[AUTO] Screenshot saved:', screenshotPath);
 
     await browser.disconnect();
+    
+    // 关闭浏览器（但保留用户数据）
+    console.log('[AUTO] Closing browser...');
+    try {
+      // 使用本地代理关闭浏览器
+      await closeBrowser(index);
+    } catch(e) {
+      console.log('[AUTO] Failed to close browser:', e.message);
+    }
+    
     return { success: true, screenshotPath };
 
   } catch (error) {
@@ -356,6 +386,10 @@ async function executeBrowserAutomation(data, token) {
     if (browser) {
       try { await browser.disconnect(); } catch(e) {}
     }
+    // 失败时也关闭浏览器
+    try {
+      await closeBrowser(index);
+    } catch(e) {}
     return { success: false, message: error.message };
   }
 }
