@@ -22,12 +22,17 @@ if not exist "C:\chrome_profiles\%USER_DATA_DIR%" (
   mkdir "C:\chrome_profiles\%USER_DATA_DIR%"
 )
 
-:: 关闭该序号的 SSH 隧道
+:: 关闭该序号的 SSH 隧道（本地和远程）
 echo [BAT] Step 2: Killing existing SSH tunnel...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SSH_PORT%') do (
-  echo [BAT] Killing PID %%a
+  echo [BAT] Killing local SSH PID %%a
   taskkill /F /PID %%a 2>nul
 )
+timeout /t 2 >nul
+
+:: 通过 SSH 清理服务器端的端口占用
+echo [BAT] Step 2b: Cleaning up server port %SSH_PORT%...
+ssh -o ConnectTimeout=5 -o BatchMode=yes root@101.43.54.252 "lsof -ti:%SSH_PORT% | xargs -r kill -9 2>/dev/null; echo 'Server port cleaned'" 2>nul
 timeout /t 2 >nul
 
 :: 启动 Chrome
@@ -52,7 +57,7 @@ if errorlevel 1 (
 )
 echo [BAT] Chrome is running on port %LOCAL_PORT%
 
-:: 建立 SSH 隧道（使用 0.0.0.0 绑定）
+:: 建立 SSH 隧道（使用 0.0.0.0 绑定，带自动重试）
 echo [BAT] Step 6: Creating SSH tunnel...
 
 :: 先测试 SSH 连接
@@ -63,30 +68,38 @@ if errorlevel 1 (
   exit /b 1
 )
 
-:: 建立隧道（后台运行）
-echo [BAT] Establishing reverse tunnel...
+:: 尝试建立隧道（最多3次）
+set /a tunnel_attempts=0
+:tunnel_retry
+set /a tunnel_attempts+=1
+echo [BAT] Establishing reverse tunnel (attempt %tunnel_attempts%/3)...
+
+:: 先清理服务器端口
+ssh -o ConnectTimeout=5 -o BatchMode=yes root@101.43.54.252 "lsof -ti:%SSH_PORT% 2>/dev/null | xargs -r kill -9 2>/dev/null; sleep 1; echo 'Port cleaned'" 2>nul
+
 start "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes
 
-:: 等待隧道建立（关键：给足够时间）
-echo [BAT] Waiting for tunnel to establish (10 seconds)...
-timeout /t 10 >nul
+:: 等待隧道建立
+echo [BAT] Waiting for tunnel to establish...
+timeout /t 8 >nul
 
-:: 循环检查隧道是否建立（最多30秒）
-echo [BAT] Step 7: Verifying SSH tunnel...
-set /a count=0
-:check_tunnel
+:: 检查隧道是否建立
+echo [BAT] Checking if tunnel is established...
 netstat -an | findstr ":%SSH_PORT%" >nul
 if errorlevel 1 (
-  set /a count+=1
-  if %count% lss 6 (
-    echo [BAT] Tunnel not ready yet, waiting... (%count%/6)
-    timeout /t 5 >nul
-    goto check_tunnel
+  echo [BAT] Tunnel not established on attempt %tunnel_attempts%
+  if %tunnel_attempts% lss 3 (
+    echo [BAT] Retrying after cleanup...
+    :: 杀死之前的 SSH 进程
+    taskkill /F /FI "WINDOWTITLE eq SSH Tunnel %INDEX%" 2>nul
+    timeout /t 2 >nul
+    goto tunnel_retry
   ) else (
-    echo [BAT] WARNING: SSH tunnel may not be established
+    echo [BAT] ERROR: Failed to establish SSH tunnel after 3 attempts
+    exit /b 1
   )
 ) else (
-  echo [BAT] SSH tunnel is established on port %SSH_PORT%
+  echo [BAT] SSH tunnel successfully established on port %SSH_PORT%
 )
 
 echo [BAT] ========================================
@@ -96,7 +109,7 @@ echo [BAT] Remote: http://101.43.54.252:%SSH_PORT%
 echo [BAT] ========================================
 
 :: 等待更长时间确保隧道稳定
-timeout /t 5 >nul
+timeout /t 3 >nul
 
 :: 自动关闭 CMD 窗口
 exit
