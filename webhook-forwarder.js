@@ -18,6 +18,18 @@ const {
   detectContentType
 } = require('./utils');
 
+// 序号到端口的映射
+function getPortsByIndex(index) {
+  const baseLocalPort = 9000;
+  const baseSSHPort = 62000;
+
+  return {
+    localPort: baseLocalPort + index,      // 9001, 9002, ...
+    sshPort: baseSSHPort + index,          // 62001, 62002, ...
+    userDataDir: `account_${index}`         // account_1, account_2, ...
+  };
+}
+
 // 识别内容类型
 function detectContentTypeLocal(url) {
   return detectContentType(url);
@@ -29,6 +41,13 @@ async function executeBrowserAutomation(data, token) {
   console.log('[AUTO] Link:', data.product_link);
   console.log('[AUTO] Comment:', data.comment_script);
 
+  // 获取序号（默认 1）
+  const index = parseInt(data.index) || 1;
+  const { localPort, sshPort, userDataDir } = getPortsByIndex(index);
+
+  console.log(`[AUTO] Using index ${index}: local=${localPort}, ssh=${sshPort}, dir=${userDataDir}`);
+  await sendProgressMessage(token, `🔢 使用账号序号: ${index} (端口: ${sshPort})`, data);
+
   const contentType = detectContentTypeLocal(data.product_link);
   console.log(`[AUTO] Content type: ${contentType.name} (${contentType.platform}/${contentType.type})`);
   await sendProgressMessage(token, `📱 识别平台: ${contentType.name}`, data);
@@ -36,11 +55,11 @@ async function executeBrowserAutomation(data, token) {
   let browser = null;
 
   try {
-    // 连接 Chrome
-    console.log('[AUTO] Connecting to Chrome...');
-    await sendProgressMessage(token, '🔌 正在连接 Chrome...', data);
+    // 连接 Chrome（使用对应的 SSH 端口）
+    console.log(`[AUTO] Connecting to Chrome on port ${sshPort}...`);
+    await sendProgressMessage(token, `🔌 正在连接 Chrome (端口 ${sshPort})...`, data);
     browser = await puppeteer.connect({
-      browserURL: 'http://localhost:62030',
+      browserURL: `http://localhost:${sshPort}`,
       defaultViewport: { width: 1280, height: 800 }
     });
     console.log('[AUTO] Chrome connected');
