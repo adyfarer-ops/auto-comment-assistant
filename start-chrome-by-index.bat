@@ -48,26 +48,45 @@ echo [BAT] Step 5: Checking if Chrome is running on port %LOCAL_PORT%...
 netstat -an | findstr ":%LOCAL_PORT%"
 if errorlevel 1 (
   echo [BAT] ERROR: Chrome is not listening on port %LOCAL_PORT%
-  pause
   exit /b 1
 )
 echo [BAT] Chrome is running on port %LOCAL_PORT%
 
 :: 建立 SSH 隧道（使用 0.0.0.0 绑定）
 echo [BAT] Step 6: Creating SSH tunnel...
-echo [BAT] Command: ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes
+echo [BAT] This may take a few seconds...
 
-:: 建立隧道（保持窗口运行）
-start "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+:: 使用 call 确保等待 SSH 连接建立
+call ssh -o ConnectTimeout=5 -o BatchMode=yes root@101.43.54.252 echo "SSH connection test OK"
+if errorlevel 1 (
+  echo [BAT] ERROR: Cannot connect to server via SSH
+  echo [BAT] Make sure SSH key authentication is configured
+  exit /b 1
+)
 
-timeout /t 3 >nul
+:: 建立隧道（后台运行）
+echo [BAT] Establishing reverse tunnel...
+start /B "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes
+
+:: 等待隧道建立
+echo [BAT] Waiting for tunnel to establish...
+timeout /t 5 >nul
+
+:: 验证隧道
+echo [BAT] Step 7: Verifying SSH tunnel...
+netstat -an | findstr ":%SSH_PORT%"
+if errorlevel 1 (
+  echo [BAT] WARNING: SSH tunnel may not be established yet
+  echo [BAT] Waiting additional 5 seconds...
+  timeout /t 5 >nul
+)
 
 echo [BAT] ========================================
 echo [BAT] Chrome %INDEX% startup complete!
 echo [BAT] Local: http://localhost:%LOCAL_PORT%
-echo [BAT] Remote: http://101.43.54.252:%SSH_PORT% (via SSH tunnel)
+echo [BAT] Remote: http://101.43.54.252:%SSH_PORT%
 echo [BAT] ========================================
 
-:: 保持窗口打开
-echo [BAT] Press any key to close this window...
-pause >nul
+:: 不暂停，直接退出（用于自动启动）
+echo [BAT] Done. Exiting...
+timeout /t 2 >nul
