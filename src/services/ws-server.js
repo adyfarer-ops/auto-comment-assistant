@@ -190,6 +190,24 @@ app.post('/start-chrome/:index', (req, res) => {
   });
 });
 
+// 关闭 Chrome
+app.post('/close-chrome/:index', (req, res) => {
+  const index = parseInt(req.params.index);
+  
+  const sent = sendCloseCommand(index);
+  
+  // 清除 Chrome 状态
+  if (global.chromeStatus && global.chromeStatus[index]) {
+    delete global.chromeStatus[index];
+  }
+  
+  res.json({
+    success: true,
+    message: sent ? 'Close command sent via WebSocket' : 'No connected clients',
+    index: index
+  });
+});
+
 // 启动 HTTP API（使用不同端口）
 app.listen(3004, '0.0.0.0', () => {
   console.log('[API] HTTP API listening on port 3004');
@@ -205,8 +223,30 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('========================================\n');
 });
 
+// 发送关闭命令给客户端
+function sendCloseCommand(index) {
+  const cmd = {
+    action: 'close-chrome',
+    data: {
+      index: index
+    }
+  };
+
+  for (const [clientId, client] of clients) {
+    if (client.ws.readyState === WebSocket.OPEN) {
+      console.log(`[WS] Sending close command to ${clientId}:`, cmd);
+      client.ws.send(JSON.stringify(cmd));
+      return true;
+    }
+  }
+
+  console.log('[WS] No connected clients for close command');
+  return false;
+}
+
 // 导出函数
 module.exports = {
   sendCommand,
+  sendCloseCommand,
   isChromeReady
 };

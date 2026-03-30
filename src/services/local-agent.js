@@ -169,6 +169,45 @@ function connect() {
           localPort: localPort,
           sshPort: sshPort
         }));
+      } else if (cmd.action === 'close-chrome') {
+        const { index } = cmd.data;
+        console.log(`[AGENT] Closing Chrome ${index}...`);
+        
+        // 使用 taskkill 关闭 Chrome
+        const killChrome = spawn('taskkill', ['/F', '/IM', 'chrome.exe'], {
+          windowsHide: true
+        });
+        
+        killChrome.on('close', (code) => {
+          console.log(`[AGENT] Chrome kill exited with code ${code}`);
+        });
+        
+        // 使用 taskkill 关闭 SSH (ssh.exe)
+        const killSSH = spawn('taskkill', ['/F', '/IM', 'ssh.exe'], {
+          windowsHide: true
+        });
+        
+        killSSH.on('close', (code) => {
+          console.log(`[AGENT] SSH kill exited with code ${code}`);
+        });
+        
+        // 关闭所有 cmd.exe 窗口（除了当前这个）
+        const killCMD = spawn('taskkill', ['/F', '/FI', 'WINDOWTITLE ne local-agent*', '/IM', 'cmd.exe'], {
+          windowsHide: true
+        });
+        
+        killCMD.on('close', (code) => {
+          console.log(`[AGENT] CMD kill exited with code ${code}`);
+        });
+        
+        console.log(`[AGENT] Close commands sent for Chrome ${index}`);
+        
+        // 通知服务器已关闭
+        ws.send(JSON.stringify({
+          type: 'chrome-status',
+          status: 'closed',
+          index: index
+        }));
       }
     } catch (e) {
       console.error('[AGENT] Failed to parse message:', e.message);
