@@ -364,9 +364,58 @@ async function inputAndSendComment(page, commentInput, data, token, contentType)
     }
 
   } else {
-    console.log('[AUTO] Button not found, trying Enter key...');
-    await page.keyboard.press('Enter');
-    await new Promise(r => setTimeout(r, 3000));
+    console.log('[AUTO] Button not found, may need login. Waiting for user login...');
+    await sendProgressMessage(token, '🔐 未找到发送按钮，等待用户登录...', data);
+    
+    // 等待用户登录（最多5分钟）
+    let loginWaitTime = 0;
+    const maxWaitTime = 5 * 60 * 1000;
+    const checkInterval = 5000;
+    let buttonFound = false;
+    
+    while (loginWaitTime < maxWaitTime && !buttonFound) {
+      await new Promise(r => setTimeout(r, checkInterval));
+      loginWaitTime += checkInterval;
+      
+      // 重新查找发送按钮
+      for (const selector of sendButtonSelectors) {
+        try {
+          const btn = await page.$(selector);
+          if (btn) {
+            const isVisible = await btn.evaluate(el => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            });
+            if (isVisible) {
+              sendButton = btn;
+              buttonFound = true;
+              console.log('[AUTO] Send button found after login wait');
+              break;
+            }
+          }
+        } catch(e) {}
+      }
+      
+      if (!buttonFound && loginWaitTime % 30000 === 0) {
+        const remainingTime = Math.ceil((maxWaitTime - loginWaitTime) / 1000);
+        await sendProgressMessage(token, `⏳ 等待登录中...剩余${remainingTime}秒`, data);
+      }
+    }
+    
+    if (buttonFound) {
+      // 找到按钮后点击
+      try {
+        await sendButton.click();
+        console.log('[AUTO] Send button clicked after login');
+        await sendProgressMessage(token, '📤 评论已发送', data);
+      } catch(e) {
+        console.log('[AUTO] Failed to click send button:', e.message);
+        return { success: false, message: '点击发送按钮失败' };
+      }
+    } else {
+      console.log('[AUTO] Send button still not found after waiting');
+      return { success: false, message: '等待登录超时，未找到发送按钮' };
+    }
   }
 
   return { success: true };
