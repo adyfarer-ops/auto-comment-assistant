@@ -121,19 +121,55 @@ function getPortsByIndex(index) {
 // 关闭指定序号的浏览器
 async function closeBrowser(index) {
   return new Promise((resolve) => {
-    const { userDataDir } = getPortsByIndex(index);
+    const { localPort } = getPortsByIndex(index);
     
-    // 使用 taskkill 关闭对应窗口标题的 Chrome
+    // 使用 taskkill 关闭占用本地调试端口的 Chrome
     const { exec } = require('child_process');
-    const cmd = `taskkill /F /IM chrome.exe /FI "WINDOWTITLE eq Chrome*${userDataDir}*"`;
     
-    exec(cmd, (error, stdout, stderr) => {
-      if (error) {
-        console.log(`[CLOSE] Browser ${index} may already be closed`);
-      } else {
-        console.log(`[CLOSE] Browser ${index} closed successfully`);
+    // 先找到占用端口的进程
+    const findCmd = `netstat -ano | findstr :${localPort}`;
+    
+    exec(findCmd, (error, stdout, stderr) => {
+      if (error || !stdout) {
+        console.log(`[CLOSE] Browser ${index} (port ${localPort}) may already be closed`);
+        resolve();
+        return;
       }
-      resolve();
+      
+      // 解析输出获取 PID
+      const lines = stdout.trim().split('\n');
+      const pids = new Set();
+      
+      for (const line of lines) {
+        const match = line.match(/LISTENING\s+(\d+)/);
+        if (match) {
+          pids.add(match[1]);
+        }
+      }
+      
+      if (pids.size === 0) {
+        console.log(`[CLOSE] No browser found for port ${localPort}`);
+        resolve();
+        return;
+      }
+      
+      // 杀死这些进程
+      let killed = 0;
+      for (const pid of pids) {
+        const killCmd = `taskkill /F /PID ${pid}`;
+        exec(killCmd, (err) => {
+          killed++;
+          if (err) {
+            console.log(`[CLOSE] Failed to kill browser PID ${pid}: ${err.message}`);
+          } else {
+            console.log(`[CLOSE] Killed browser PID ${pid}`);
+          }
+          if (killed === pids.size) {
+            console.log(`[CLOSE] Browser ${index} (port ${localPort}) closed`);
+            resolve();
+          }
+        });
+      }
     });
   });
 }
@@ -194,27 +230,29 @@ async function closeSSHTunnel(index) {
   });
 }
 
-// 关闭 CMD 窗口（通过窗口标题）
+// 关闭 CMD 窗口（通过查找 SSH 进程）
 async function closeCMDWindow(index) {
   return new Promise((resolve) => {
     const { exec } = require('child_process');
     
-    // 查找包含 "SSH Tunnel" 和序号的 CMD 窗口
-    const findCmd = `tasklist /V /FI "IMAGENAME eq cmd.exe" /FO CSV | findstr "SSH Tunnel ${index}"`;
+    // 查找 ssh.exe 进程（SSH 隧道）
+    const findCmd = `tasklist /FI "IMAGENAME eq ssh.exe" /FO CSV`;
     
     exec(findCmd, (error, stdout, stderr) => {
       if (error || !stdout) {
-        console.log(`[CLOSE] No CMD window found for index ${index}`);
-        resolve();
+        console.log(`[CLOSE] No SSH process found`);
+        // 也尝试关闭所有 cmd.exe（作为备用）
+        exec('taskkill /F /IM cmd.exe 2>nul', () => resolve());
         return;
       }
       
-      // 解析 CSV 输出获取 PID
+      // 解析 CSV 输出获取所有 SSH 进程的 PID
       const lines = stdout.trim().split('\n');
       const pids = [];
       
-      for (const line of lines) {
-        const parts = line.split('","');
+      // 跳过标题行
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split('","');
         if (parts.length > 1) {
           const pid = parts[1].replace(/"/g, '');
           if (pid && !isNaN(parseInt(pid))) {
@@ -224,25 +262,29 @@ async function closeCMDWindow(index) {
       }
       
       if (pids.length === 0) {
-        console.log(`[CLOSE] No CMD window PID found for index ${index}`);
-        resolve();
+        console.log(`[CLOSE] No SSH process PIDs found`);
+        // 尝试关闭所有 cmd.exe
+        exec('taskkill /F /IM cmd.exe 2>nul', () => resolve());
         return;
       }
       
-      // 杀死这些 CMD 进程
+      console.log(`[CLOSE] Found ${pids.length} SSH process(es)`);
+      
+      // 杀死这些 SSH 进程
       let killed = 0;
       for (const pid of pids) {
         const killCmd = `taskkill /F /PID ${pid}`;
         exec(killCmd, (err) => {
           killed++;
           if (err) {
-            console.log(`[CLOSE] Failed to kill CMD PID ${pid}: ${err.message}`);
+            console.log(`[CLOSE] Failed to kill SSH PID ${pid}: ${err.message}`);
           } else {
-            console.log(`[CLOSE] Killed CMD window PID ${pid}`);
+            console.log(`[CLOSE] Killed SSH PID ${pid}`);
           }
           if (killed === pids.length) {
-            console.log(`[CLOSE] CMD windows for index ${index} closed`);
-            resolve();
+            console.log(`[CLOSE] All SSH processes closed`);
+            // 也关闭所有 cmd.exe
+            exec('taskkill /F /IM cmd.exe 2>nul', () => resolve());
           }
         });
       }
