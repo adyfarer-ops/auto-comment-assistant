@@ -65,9 +65,96 @@ async function getRecordDetail(token, recordId, tableId) {
   });
 }
 
-// 识别内容类型
-function detectContentTypeLocal(url) {
-  return detectContentType(url);
+// 请求本地代理启动 Chrome
+async function requestLocalAgentStart(index, maxWaitTime = 60000) {
+  const https = require('https');
+  
+  return new Promise((resolve) => {
+    console.log(`[AGENT] Requesting local agent to start Chrome ${index}...`);
+    
+    const data = JSON.stringify({});
+    const options = {
+      hostname: 'localhost',
+      port: 3004,
+      path: `/start-chrome/${index}`,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data.length
+      }
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(body);
+          console.log('[AGENT] Start request result:', result);
+          
+          if (result.success) {
+            // 等待 Chrome 启动完成
+            console.log(`[AGENT] Waiting for Chrome ${index} to be ready...`);
+            const checkInterval = 2000;
+            let waited = 0;
+            
+            const checkReady = () => {
+              const checkReq = https.request({
+                hostname: 'localhost',
+                port: 3004,
+                path: `/chrome-status/${index}`,
+                method: 'GET'
+              }, (checkRes) => {
+                let checkBody = '';
+                checkRes.on('data', (chunk) => checkBody += chunk);
+                checkRes.on('end', () => {
+                  try {
+                    const status = JSON.parse(checkBody);
+                    if (status.ready) {
+                      console.log(`[AGENT] Chrome ${index} is ready!`);
+                      resolve({ success: true });
+                    } else if (waited >= maxWaitTime) {
+                      console.log('[AGENT] Timeout waiting for Chrome');
+                      resolve({ success: false, message: 'Timeout' });
+                    } else {
+                      waited += checkInterval;
+                      setTimeout(checkReady, checkInterval);
+                    }
+                  } catch (e) {
+                    resolve({ success: false, message: e.message });
+                  }
+                });
+              });
+              checkReq.on('error', (err) => {
+                console.log('[AGENT] Check status error:', err.message);
+                if (waited >= maxWaitTime) {
+                  resolve({ success: false, message: err.message });
+                } else {
+                  waited += checkInterval;
+                  setTimeout(checkReady, checkInterval);
+                }
+              });
+              checkReq.end();
+            };
+            
+            setTimeout(checkReady, 5000); // 先等 5 秒让 Chrome 启动
+          } else {
+            resolve({ success: false, message: result.message });
+          }
+        } catch (e) {
+          resolve({ success: false, message: e.message });
+        }
+      });
+    });
+    
+    req.on('error', (err) => {
+      console.error('[AGENT] Request error:', err.message);
+      resolve({ success: false, message: err.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
 }
 
 // 执行浏览器自动化
@@ -88,18 +175,50 @@ async function executeBrowserAutomation(data, token) {
   await sendProgressMessage(token, `📱 识别平台: ${contentType.name}`, data);
 
   let browser = null;
+  let connectRetries = 0;
+  const maxConnectRetries = 2;
+
+  while (connectRetries <= maxConnectRetries) {
+    try {
+      // 连接 Chrome（使用对应的 SSH 端口）
+      console.log(`[AUTO] Connecting to Chrome on port ${sshPort}... (attempt ${connectRetries + 1})`);
+      await sendProgressMessage(token, `🔌 正在连接 Chrome (端口 ${sshPort})...`, data);
+      browser = await puppeteer.connect({
+        browserURL: `http://localhost:${sshPort}`,
+        defaultViewport: { width: 1280, height: 800 }
+      });
+      console.log('[AUTO] Chrome connected');
+      await sendProgressMessage(token, '🔌 已连接到 Chrome', data);
+      break; // 连接成功，跳出循环
+    } catch (connectError) {
+      console.log(`[AUTO] Connection failed: ${connectError.message}`);
+      connectRetries++;
+      
+      if (connectRetries <= maxConnectRetries) {
+        // 尝试通过本地代理启动 Chrome
+        console.log('[AUTO] Trying to start Chrome via local agent...');
+        await sendProgressMessage(token, '🚀 Chrome 未运行，正在通知本地启动...', data);
+        
+        const startResult = await requestLocalAgentStart(index);
+        if (!startResult.success) {
+          console.log('[AUTO] Failed to start Chrome via agent:', startResult.message);
+          await sendProgressMessage(token, '❌ 本地启动 Chrome 失败，请手动启动', data);
+          return { success: false, message: 'Chrome 启动失败: ' + startResult.message };
+        }
+        
+        // 等待一段时间再重试连接
+        console.log('[AUTO] Waiting for Chrome to start...');
+        await new Promise(r => setTimeout(r, 8000));
+      } else {
+        // 重试次数用完
+        console.error('[AUTO] Max retries reached, giving up');
+        await sendProgressMessage(token, '❌ 无法连接到 Chrome，请检查本地代理是否运行', data);
+        return { success: false, message: '无法连接到 Chrome: ' + connectError.message };
+      }
+    }
+  }
 
   try {
-    // 连接 Chrome（使用对应的 SSH 端口）
-    console.log(`[AUTO] Connecting to Chrome on port ${sshPort}...`);
-    await sendProgressMessage(token, `🔌 正在连接 Chrome (端口 ${sshPort})...`, data);
-    browser = await puppeteer.connect({
-      browserURL: `http://localhost:${sshPort}`,
-      defaultViewport: { width: 1280, height: 800 }
-    });
-    console.log('[AUTO] Chrome connected');
-    await sendProgressMessage(token, '🔌 已连接到 Chrome', data);
-
     // 获取或创建页面
     const pages = await browser.pages();
     let page = pages[0];
