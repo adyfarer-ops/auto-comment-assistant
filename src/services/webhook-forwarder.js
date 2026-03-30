@@ -481,7 +481,16 @@ async function executeBrowserAutomation(data, token) {
     await page.bringToFront();
     await new Promise(r => setTimeout(r, 3000));
 
-    // 检测是否需要验证（打开链接后）
+    // 页面打开后，重新检测实际的内容类型
+    const actualUrl = page.url();
+    console.log('[AUTO] Actual URL:', actualUrl);
+    const actualContentType = detectContentType(actualUrl);
+    if (actualContentType.type !== contentType.type) {
+      console.log(`[AUTO] Content type corrected: ${actualContentType.name}`);
+      await sendProgressMessage(token, `📱 修正平台类型: ${actualContentType.name}`, data);
+    }
+
+    // 检测是否需要验证（打开链接后）- 只在抖音平台检测
     if (actualContentType.platform === 'douyin') {
       console.log('[AUTO] Checking for verification after page load...');
       const verificationSelectors = [
@@ -557,15 +566,6 @@ async function executeBrowserAutomation(data, token) {
           return { success: false, message: '打开页面验证超时' };
         }
       }
-    }
-
-    // 页面打开后，重新检测实际的内容类型
-    const actualUrl = page.url();
-    console.log('[AUTO] Actual URL:', actualUrl);
-    const actualContentType = detectContentType(actualUrl);
-    if (actualContentType.type !== contentType.type) {
-      console.log(`[AUTO] Content type corrected: ${actualContentType.name}`);
-      await sendProgressMessage(token, `📱 修正平台类型: ${actualContentType.name}`, data);
     }
 
     // 根据内容类型执行不同的处理流程
