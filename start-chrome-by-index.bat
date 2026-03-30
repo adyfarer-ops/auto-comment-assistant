@@ -4,25 +4,70 @@ set LOCAL_PORT=%2
 set SSH_PORT=%3
 set USER_DATA_DIR=%4
 
-:: 关闭该序号的 Chrome
-taskkill /F /IM chrome.exe /FI "WINDOWTITLE eq Chrome*%USER_DATA_DIR%*" 2>nul
+echo [BAT] ========================================
+echo [BAT] Starting Chrome %INDEX%
+echo [BAT] Local Port: %LOCAL_PORT%
+echo [BAT] SSH Port: %SSH_PORT%
+echo [BAT] User Data: %USER_DATA_DIR%
+echo [BAT] ========================================
 
-:: 等待
+:: 关闭该序号的 Chrome
+echo [BAT] Step 1: Killing existing Chrome...
+taskkill /F /IM chrome.exe /FI "WINDOWTITLE eq Chrome*%USER_DATA_DIR%*" 2>nul
+timeout /t 2 >nul
+
+:: 确保用户数据目录存在
+if not exist "C:\chrome_profiles\%USER_DATA_DIR%" (
+  echo [BAT] Creating user data directory: C:\chrome_profiles\%USER_DATA_DIR%
+  mkdir "C:\chrome_profiles\%USER_DATA_DIR%"
+)
+
+:: 关闭该序号的 SSH 隧道
+echo [BAT] Step 2: Killing existing SSH tunnel...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SSH_PORT%') do (
+  echo [BAT] Killing PID %%a
+  taskkill /F /PID %%a 2>nul
+)
 timeout /t 2 >nul
 
 :: 启动 Chrome
+echo [BAT] Step 3: Starting Chrome...
 start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" ^
   --remote-debugging-port=%LOCAL_PORT% ^
   --user-data-dir="C:\chrome_profiles\%USER_DATA_DIR%" ^
-  --window-name="%USER_DATA_DIR%"
+  --window-name="%USER_DATA_DIR%" ^
+  --no-first-run ^
+  --no-default-browser-check
 
-:: 等待
+:: 等待 Chrome 启动
+echo [BAT] Step 4: Waiting for Chrome to start...
+timeout /t 5 >nul
+
+:: 检查 Chrome 是否成功启动
+echo [BAT] Step 5: Checking if Chrome is running on port %LOCAL_PORT%...
+netstat -an | findstr ":%LOCAL_PORT%"
+if errorlevel 1 (
+  echo [BAT] ERROR: Chrome is not listening on port %LOCAL_PORT%
+  pause
+  exit /b 1
+)
+echo [BAT] Chrome is running on port %LOCAL_PORT%
+
+:: 建立 SSH 隧道（使用 0.0.0.0 绑定）
+echo [BAT] Step 6: Creating SSH tunnel...
+echo [BAT] Command: ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes
+
+:: 建立隧道（保持窗口运行）
+start "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+
 timeout /t 3 >nul
 
-:: 关闭该序号的 SSH
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%SSH_PORT%') do taskkill /F /PID %%a 2>nul
+echo [BAT] ========================================
+echo [BAT] Chrome %INDEX% startup complete!
+echo [BAT] Local: http://localhost:%LOCAL_PORT%
+echo [BAT] Remote: http://101.43.54.252:%SSH_PORT% (via SSH tunnel)
+echo [BAT] ========================================
 
-:: 建立 SSH 隧道
-start "" ssh -R %SSH_PORT%:localhost:%LOCAL_PORT% root@101.43.54.252 -N
-
-echo Chrome %INDEX% started on local:%LOCAL_PORT% ssh:%SSH_PORT%
+:: 保持窗口打开
+echo [BAT] Press any key to close this window...
+pause >nul
