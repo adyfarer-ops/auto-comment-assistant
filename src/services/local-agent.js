@@ -139,10 +139,50 @@ function connect() {
         
         // 检查 Chrome 是否真的就绪
         console.log('[AGENT] Checking if Chrome is really ready...');
-        const isReady = await checkChromeReady(localPort, 10000);
+        const isChromeReady = await checkChromeReady(localPort, 10000);
         
-        if (isReady) {
-          console.log(`[AGENT] Chrome ${index} is confirmed ready!`);
+        if (!isChromeReady) {
+          console.log(`[AGENT] Chrome ${index} failed to start properly`);
+          ws.send(JSON.stringify({
+            type: 'chrome-status',
+            status: 'error',
+            index: index,
+            error: 'Chrome not responding'
+          }));
+          return;
+        }
+        
+        console.log(`[AGENT] Chrome ${index} is ready on port ${localPort}`);
+        
+        // 检查 SSH 隧道是否建立（通过检查本地端口是否可连接）
+        console.log('[AGENT] Checking if SSH tunnel is established...');
+        const net = require('net');
+        const isTunnelReady = await new Promise((resolve) => {
+          const socket = new net.Socket();
+          socket.setTimeout(3000);
+          
+          socket.on('connect', () => {
+            console.log(`[AGENT] SSH tunnel is ready on port ${sshPort}`);
+            socket.destroy();
+            resolve(true);
+          });
+          
+          socket.on('error', () => {
+            console.log(`[AGENT] SSH tunnel not ready on port ${sshPort}`);
+            resolve(false);
+          });
+          
+          socket.on('timeout', () => {
+            console.log(`[AGENT] SSH tunnel check timeout on port ${sshPort}`);
+            socket.destroy();
+            resolve(false);
+          });
+          
+          socket.connect(sshPort, 'localhost');
+        });
+        
+        if (isTunnelReady) {
+          console.log(`[AGENT] Chrome ${index} with SSH tunnel is confirmed ready!`);
           ws.send(JSON.stringify({
             type: 'chrome-status',
             status: 'ready',
@@ -151,12 +191,12 @@ function connect() {
             sshPort: sshPort
           }));
         } else {
-          console.log(`[AGENT] Chrome ${index} failed to start properly`);
+          console.log(`[AGENT] SSH tunnel ${index} failed to establish`);
           ws.send(JSON.stringify({
             type: 'chrome-status',
             status: 'error',
             index: index,
-            error: 'Chrome not responding'
+            error: 'SSH tunnel not established'
           }));
         }
       }
