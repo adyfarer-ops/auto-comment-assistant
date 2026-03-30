@@ -295,9 +295,7 @@ async function inputAndSendComment(page, commentInput, data, token, contentType)
     }
 
     if (clicked) {
-      // 发送反馈：评论已发送
-      await sendProgressMessage(token, '📤 评论已发送', data);
-      console.log('[AUTO] Sent!');
+      console.log('[AUTO] Send button clicked');
       
       // 等待2秒后检查是否出现验证码弹窗
       await new Promise(r => setTimeout(r, 2000));
@@ -380,6 +378,10 @@ async function inputAndSendComment(page, commentInput, data, token, contentType)
           return { success: false, message: '验证超时' };
         }
       }
+      
+      // 验证完成（或不需要验证）后，发送评论已发送的反馈
+      await sendProgressMessage(token, '📤 评论已发送', data);
+      console.log('[AUTO] Sent!');
     } else {
       return { success: false, message: '点击发送按钮失败' };
     }
