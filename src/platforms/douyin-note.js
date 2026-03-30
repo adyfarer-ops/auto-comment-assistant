@@ -394,7 +394,7 @@ async function handleDouyinNote(page, token, data, browser) {
 
     if (!result.found) {
       console.log('[AUTO] Comment tab not found');
-      return null;
+      return { commentInput: null };  // 返回对象让外部处理
     }
 
     console.log('[AUTO] Clicked comment tab:', result.text, 'y:', result.y, 'class:', result.className);
@@ -510,7 +510,7 @@ async function handleDouyinNote(page, token, data, browser) {
 
     if (!commentInput) {
       console.log('[AUTO] Comment input not found after all attempts');
-      return null;
+      return { commentInput: null };  // 返回对象而不是 null，让外部处理登录等待
     }
 
     console.log('[AUTO] Comment input found');
@@ -665,7 +665,7 @@ async function handleDouyinNote(page, token, data, browser) {
 
   } catch (e) {
     console.log('[AUTO] Error in handleDouyinNote:', e.message);
-    return null;
+    return { commentInput: null };  // 返回对象让外部处理
   }
 }
 

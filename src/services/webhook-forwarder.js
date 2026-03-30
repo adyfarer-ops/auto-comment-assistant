@@ -501,12 +501,10 @@ async function executeBrowserAutomation(data, token) {
         console.log('[AUTO] Douyin Note completed successfully');
         return noteResult;
       }
-      if (!noteResult) {
-        console.log('[AUTO] Douyin Note: Test phase completed');
-        await browser.disconnect();
-        return { success: false, message: '抖音图文测试阶段结束' };
+      if (noteResult && noteResult.commentInput) {
+        commentInput = noteResult.commentInput;
       }
-      commentInput = noteResult;
+      // 如果没有找到评论框，继续到登录等待逻辑
     } else if (actualContentType.platform === 'douyin' && actualContentType.type === 'video') {
       await sendProgressMessage(token, '🎬 处理抖音视频...', data);
       commentInput = await handleDouyinVideo(page, token, data);
@@ -518,8 +516,8 @@ async function executeBrowserAutomation(data, token) {
       commentInput = await findCommentInput(page, 'default', token, data);
     }
 
-    // 如果还是没找到评论框，等待用户登录
-    if (!commentInput && !isDouyinNote) {
+    // 如果还是没找到评论框，等待用户登录（支持所有平台类型）
+    if (!commentInput) {
       commentInput = await handleLoginWait(page, token, data, actualContentType, browser);
       if (!commentInput) {
         return { success: false, message: '等待登录超时或页面已关闭' };
