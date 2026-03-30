@@ -156,51 +156,19 @@ function connect() {
         
         console.log(`[AGENT] Chrome ${index} is ready on port ${localPort}`);
         
-        // 检查 SSH 隧道是否建立（通过检查本地端口是否可连接）
-        console.log('[AGENT] Checking if SSH tunnel is established...');
-        const net = require('net');
-        const isTunnelReady = await new Promise((resolve) => {
-          const socket = new net.Socket();
-          socket.setTimeout(3000);
-          
-          socket.on('connect', () => {
-            console.log(`[AGENT] SSH tunnel is ready on port ${sshPort}`);
-            socket.destroy();
-            resolve(true);
-          });
-          
-          socket.on('error', () => {
-            console.log(`[AGENT] SSH tunnel not ready on port ${sshPort}`);
-            resolve(false);
-          });
-          
-          socket.on('timeout', () => {
-            console.log(`[AGENT] SSH tunnel check timeout on port ${sshPort}`);
-            socket.destroy();
-            resolve(false);
-          });
-          
-          socket.connect(sshPort, 'localhost');
-        });
+        // SSH 隧道检查：等待额外时间让隧道建立，然后让服务器验证
+        console.log('[AGENT] Waiting for SSH tunnel to establish...');
+        await new Promise(r => setTimeout(r, 10000)); // 额外等待10秒
         
-        if (isTunnelReady) {
-          console.log(`[AGENT] Chrome ${index} with SSH tunnel is confirmed ready!`);
-          ws.send(JSON.stringify({
-            type: 'chrome-status',
-            status: 'ready',
-            index: index,
-            localPort: localPort,
-            sshPort: sshPort
-          }));
-        } else {
-          console.log(`[AGENT] SSH tunnel ${index} failed to establish`);
-          ws.send(JSON.stringify({
-            type: 'chrome-status',
-            status: 'error',
-            index: index,
-            error: 'SSH tunnel not established'
-          }));
-        }
+        // 通知服务器 Chrome 已就绪，让服务器检查 SSH 隧道
+        console.log(`[AGENT] Chrome ${index} is ready, notifying server to verify SSH tunnel...`);
+        ws.send(JSON.stringify({
+          type: 'chrome-status',
+          status: 'ready',
+          index: index,
+          localPort: localPort,
+          sshPort: sshPort
+        }));
       }
     } catch (e) {
       console.error('[AGENT] Failed to parse message:', e.message);
