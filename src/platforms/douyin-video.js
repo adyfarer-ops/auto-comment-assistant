@@ -1,5 +1,5 @@
 // platforms/douyin-video.js - 抖音视频处理逻辑（添加反馈信息）
-const { sendProgressMessage } = require('../utils');
+const { sendProgressMessage } = require('../utils/utils');
 
 // 抖音视频处理流程（添加反馈信息）
 async function handleDouyinVideo(page, token, data) {

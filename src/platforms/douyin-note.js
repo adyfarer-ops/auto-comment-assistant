@@ -1,5 +1,5 @@
 // platforms/douyin-note.js - 抖音图文处理逻辑（完全按照备份代码，添加反馈信息）
-const { sendProgressMessage, updateRecordField } = require('../utils');
+const { sendProgressMessage, updateRecordField } = require('../utils/utils');
 
 // 通用评论输入和发送逻辑（完全复制备份代码，添加反馈）
 async function inputAndSendComment(page, commentInput, data, token, contentType) {
