@@ -464,8 +464,9 @@ async function handleLoginWait(page, token, data, contentType, browser) {
       }
     } catch (e) {
       console.log('[AUTO] Error finding comment input:', e.message);
-      if (e.message.includes('Session closed') || e.message.includes('Target closed')) {
+      if (e.message.includes('Session closed') || e.message.includes('Target closed') || e.message.includes('detached Frame')) {
         pageClosed = true;
+        console.log('[AUTO] Page closed or detached, terminating task');
         break;
       }
     }
