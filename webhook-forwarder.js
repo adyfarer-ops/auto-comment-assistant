@@ -30,6 +30,41 @@ function getPortsByIndex(index) {
   };
 }
 
+// 获取记录详情
+async function getRecordDetail(token, recordId, tableId) {
+  return new Promise((resolve) => {
+    const targetTableId = tableId || CONFIG.tableId;
+
+    const options = {
+      hostname: 'open.feishu.cn',
+      port: 443,
+      path: `/open-apis/bitable/v1/apps/${CONFIG.appToken}/tables/${targetTableId}/records/${recordId}`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    };
+
+    console.log('[API] Get record detail:', recordId, 'Table:', targetTableId);
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(body);
+          console.log('[API] Record detail result:', JSON.stringify(result));
+          resolve(result);
+        } catch(e) {
+          resolve({ code: -1, msg: body });
+        }
+      });
+    });
+    req.on('error', (err) => resolve({ code: -1, msg: err.message }));
+    req.end();
+  });
+}
+
 // 识别内容类型
 function detectContentTypeLocal(url) {
   return detectContentType(url);
@@ -434,11 +469,39 @@ async function handleCommentTask(data) {
 // 处理评论请求
 async function handleCommentRequest(data) {
   console.log('\n[REQUEST] Received:', data.record_id);
+  console.log('[REQUEST] Raw data:', JSON.stringify(data));
 
   try {
     const token = await getTenantAccessToken();
+
+    // 获取记录详情（包含序号等字段）
+    console.log('[REQUEST] Fetching record detail...');
+    const recordDetail = await getRecordDetail(token, data.record_id, data.table_id);
+
+    if (recordDetail.code === 0 && recordDetail.data && recordDetail.data.record) {
+      const record = recordDetail.data.record;
+      const fields = record.fields || {};
+
+      // 合并记录详情到 data
+      data.index = fields['序号'] || data.index || '1';
+      data.product_name = fields['产品名称'] || data.product_name || '';
+      data.product_link = fields['产品链接'] || data.product_link || '';
+      data.comment_script = fields['评论话术'] || data.comment_script || '';
+      data.product_info = fields['产品信息'] || data.product_info || '';
+
+      console.log('[REQUEST] Merged data:', {
+        record_id: data.record_id,
+        index: data.index,
+        product_name: data.product_name,
+        product_link: data.product_link
+      });
+    } else {
+      console.log('[REQUEST] Failed to get record detail, using default index: 1');
+      data.index = data.index || '1';
+    }
+
     await updateRecordField(token, data.record_id, '状态', '进行中');
-    console.log('[REQUEST] Started');
+    console.log('[REQUEST] Started with index:', data.index);
 
     handleCommentTask(data).then(result => {
       console.log('[REQUEST] Result:', result.success ? 'success' : 'failed');

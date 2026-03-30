@@ -1664,12 +1664,46 @@ async function executeBrowserAutomation(data, token) {
   }
 }
 
+// 获取记录详情
+async function getRecordDetail(token, recordId, tableId) {
+  return new Promise((resolve) => {
+    const targetTableId = tableId || currentRequestTableId || tableId;
+
+    const options = {
+      hostname: 'open.feishu.cn',
+      port: 443,
+      path: `/open-apis/bitable/v1/apps/${appToken}/tables/${targetTableId}/records/${recordId}`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    };
+
+    console.log('[API] Get record detail:', recordId, 'Table:', targetTableId);
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => body += chunk);
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(body);
+          console.log('[API] Record detail result:', JSON.stringify(result));
+          resolve(result);
+        } catch(e) {
+          resolve({ code: -1, msg: body });
+        }
+      });
+    });
+    req.on('error', (err) => resolve({ code: -1, msg: err.message }));
+    req.end();
+  });
+}
+
 // 处理评论任务
 async function handleCommentTask(data) {
   console.log('\n========================================');
   console.log('Task:', data.record_id);
-  console.log('Product:', data.product_name);
-  console.log('Table ID:', data.table_id || tableId);
+  console.log('Raw data:', JSON.stringify(data));
   console.log('========================================\n');
 
   // 设置当前请求使用的表格 ID
@@ -1679,8 +1713,43 @@ async function handleCommentTask(data) {
   try {
     token = await getTenantAccessToken();
 
+    // 如果 data 中没有序号等字段，从飞书获取记录详情
+    if (!data.index || !data.product_name || !data.product_link) {
+      console.log('[TASK] Fetching record detail from Feishu...');
+      const recordDetail = await getRecordDetail(token, data.record_id, data.table_id);
+
+      if (recordDetail.code === 0 && recordDetail.data && recordDetail.data.record) {
+        const record = recordDetail.data.record;
+        const fields = record.fields || {};
+
+        // 合并记录详情到 data
+        data.index = fields['序号'] || data.index || '1';
+        data.product_name = fields['产品名称'] || data.product_name || '';
+        data.product_link = fields['产品链接'] || data.product_link || '';
+        data.comment_script = fields['评论话术'] || data.comment_script || '';
+        data.product_info = fields['产品信息'] || data.product_info || '';
+
+        console.log('[TASK] Merged data from Feishu:', {
+          record_id: data.record_id,
+          index: data.index,
+          product_name: data.product_name,
+          product_link: data.product_link
+        });
+      } else {
+        console.log('[TASK] Failed to get record detail, using defaults');
+        data.index = data.index || '1';
+      }
+    }
+
+    console.log('[TASK] Final data:', {
+      record_id: data.record_id,
+      index: data.index,
+      product_name: data.product_name,
+      product_link: data.product_link
+    });
+
     await updateRecordField(token, data.record_id, '状态', '处理中');
-    console.log('[TASK] Processing...');
+    console.log('[TASK] Processing with index:', data.index);
 
     const result = await executeBrowserAutomation(data, token);
 
