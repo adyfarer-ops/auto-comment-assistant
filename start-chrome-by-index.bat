@@ -63,9 +63,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-:: 建立隧道（后台运行，使用 start /B）
+:: 建立隧道（后台运行）
 echo [BAT] Establishing reverse tunnel...
-start /B "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes
+start "SSH Tunnel %INDEX%" ssh -R 0.0.0.0:%SSH_PORT%:127.0.0.1:%LOCAL_PORT% root@101.43.54.252 -N -o GatewayPorts=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o BatchMode=yes
 
 :: 等待隧道建立（关键：给足够时间）
 echo [BAT] Waiting for tunnel to establish (10 seconds)...
