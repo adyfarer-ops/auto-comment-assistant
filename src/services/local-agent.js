@@ -107,7 +107,7 @@ function connect() {
         console.log(`  SSH Port: ${sshPort}`);
         console.log(`  User Data: ${userDataDir}`);
         
-        const scriptPath = path.join(SCRIPT_DIR, 'start-chrome-by-index.bat');
+        const scriptPath = path.join(process.cwd(), 'start-chrome-by-index.bat');
         
         console.log('[AGENT] Script path:', scriptPath);
         console.log('[AGENT] Script exists:', fs.existsSync(scriptPath));
