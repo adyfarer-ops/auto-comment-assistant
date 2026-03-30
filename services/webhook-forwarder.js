@@ -6,8 +6,8 @@ const FormData = require('form-data');
 const fs = require('fs');
 
 // 导入平台处理模块
-const { handleDouyinNote, inputAndSendComment } = require('./platforms/douyin-note');
-const { handleDouyinVideo, findCommentInput } = require('./platforms/douyin-video');
+const { handleDouyinNote, inputAndSendComment } = require('../platforms/douyin-note');
+const { handleDouyinVideo, findCommentInput } = require('../platforms/douyin-video');
 const {
   CONFIG,
   setCurrentTableId,
@@ -16,7 +16,7 @@ const {
   sendFeishuMessage,
   sendProgressMessage,
   detectContentType
-} = require('./utils');
+} = require('../utils');
 
 // 序号到端口的映射
 function getPortsByIndex(index) {
