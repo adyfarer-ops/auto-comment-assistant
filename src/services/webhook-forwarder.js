@@ -481,6 +481,84 @@ async function executeBrowserAutomation(data, token) {
     await page.bringToFront();
     await new Promise(r => setTimeout(r, 3000));
 
+    // 检测是否需要验证（打开链接后）
+    if (actualContentType.platform === 'douyin') {
+      console.log('[AUTO] Checking for verification after page load...');
+      const verificationSelectors = [
+        'div[class*="verify"]',
+        'div[class*="captcha"]',
+        'div:has-text("接收短信验证码")',
+        'div:has-text("请输入验证码")',
+        'input[placeholder*="验证码"]',
+        'div[class*="mask"]',
+        'div[class*="modal"]',
+        'div[class*="dialog"]'
+      ];
+      
+      let hasVerification = false;
+      for (const selector of verificationSelectors) {
+        try {
+          const popup = await page.$(selector);
+          if (popup) {
+            const text = await popup.evaluate(el => el.textContent || '');
+            const placeholder = await popup.evaluate(el => el.placeholder || '');
+            if (text.includes('验证码') || text.includes('验证') || text.includes('短信') ||
+                placeholder.includes('验证码') || placeholder.includes('短信')) {
+              console.log('[AUTO] Found verification popup after page load:', selector);
+              hasVerification = true;
+              break;
+            }
+          }
+        } catch(e) {}
+      }
+      
+      if (hasVerification) {
+        console.log('[AUTO] Verification required after page load');
+        await sendProgressMessage(token, '🔒 打开页面需要验证，请手动完成验证（最多等待5分钟）', data);
+        await updateRecordField(token, data.record_id, '状态', '待验证');
+        
+        let verifyWaitTime = 0;
+        const maxVerifyWait = 5 * 60 * 1000;
+        const verifyCheckInterval = 5000;
+        let verificationCleared = false;
+        
+        while (verifyWaitTime < maxVerifyWait && !verificationCleared) {
+          await new Promise(r => setTimeout(r, verifyCheckInterval));
+          verifyWaitTime += verifyCheckInterval;
+          
+          let popupStillExists = false;
+          for (const selector of verificationSelectors) {
+            try {
+              const popup = await page.$(selector);
+              if (popup) {
+                const text = await popup.evaluate(el => el.textContent || '');
+                if (text.includes('验证码') || text.includes('验证')) {
+                  popupStillExists = true;
+                  break;
+                }
+              }
+            } catch(e) {}
+          }
+          
+          if (!popupStillExists) {
+            console.log('[AUTO] Verification popup cleared');
+            verificationCleared = true;
+            await sendProgressMessage(token, '✅ 验证已完成，继续执行', data);
+          }
+          
+          if (verifyWaitTime % 30000 === 0) {
+            const remainingTime = Math.ceil((maxVerifyWait - verifyWaitTime) / 1000);
+            await sendProgressMessage(token, `⏳ 等待验证完成...剩余${remainingTime}秒`, data);
+          }
+        }
+        
+        if (!verificationCleared) {
+          console.log('[AUTO] Verification timeout after page load');
+          return { success: false, message: '打开页面验证超时' };
+        }
+      }
+    }
+
     // 页面打开后，重新检测实际的内容类型
     const actualUrl = page.url();
     console.log('[AUTO] Actual URL:', actualUrl);
