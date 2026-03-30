@@ -302,7 +302,66 @@ async function inputAndSendComment(page, commentInput, data, token, contentType)
       return { success: false, message: '点击发送按钮失败' };
     }
 
+    // 等待评论发送完成
     await new Promise(r => setTimeout(r, 3000));
+
+    // 验证评论是否发送成功（检查是否出现"刚刚"或评论内容）
+    console.log('[AUTO] Verifying comment was sent...');
+    let verified = false;
+    let verifyAttempts = 0;
+    const maxVerifyAttempts = 5;
+
+    while (!verified && verifyAttempts < maxVerifyAttempts) {
+      try {
+        // 方法1: 检查页面中是否出现"刚刚"
+        const hasJustNow = await page.evaluate(() => {
+          const comments = document.querySelectorAll('div[class*="comment"], div[class*="item"]');
+          for (const comment of comments) {
+            if (comment.textContent.includes('刚刚')) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (hasJustNow) {
+          console.log('[AUTO] Verified: found "刚刚" in comments');
+          verified = true;
+          break;
+        }
+
+        // 方法2: 检查评论数量是否增加
+        const commentCount = await page.evaluate(() => {
+          const countElements = document.querySelectorAll('div[class*="tab"], div[role="tab"]');
+          for (const el of countElements) {
+            const text = el.textContent || '';
+            const match = text.match(/评论\s*\((\d+)\)/);
+            if (match) {
+              return parseInt(match[1]);
+            }
+          }
+          return 0;
+        });
+
+        console.log(`[AUTO] Verify attempt ${verifyAttempts + 1}/${maxVerifyAttempts}: comment count = ${commentCount}`);
+
+      } catch (e) {
+        console.log('[AUTO] Verify error:', e.message);
+      }
+
+      if (!verified) {
+        await new Promise(r => setTimeout(r, 2000));
+        verifyAttempts++;
+      }
+    }
+
+    if (verified) {
+      console.log('[AUTO] Comment verified successfully');
+      await sendProgressMessage(token, '✅ 评论发送成功', data);
+    } else {
+      console.log('[AUTO] Could not verify comment was sent');
+      await sendProgressMessage(token, '⚠️ 无法确认评论是否发送成功', data);
+    }
 
   } else {
     console.log('[AUTO] Button not found, trying Enter key...');
