@@ -198,7 +198,7 @@ class ProjectService {
       throw new Error(`管理记录缺少必要字段: ${missing.join('、')}`);
     }
 
-    const tableName = `${projectName}-项目规划`;
+    const tableName = projectName.endsWith('-项目规划') ? projectName : `${projectName}-项目规划`;
     const existing = await this._checkTableExists(tableName);
     if (existing) {
       throw new Error(`项目规划表已存在: ${tableName}`);
