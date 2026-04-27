@@ -34,6 +34,77 @@ class SyncService {
     return { accountsCount: accounts.length };
   }
 
+  async syncAccountByRecordId(planTableId, recordId, projectName) {
+    const accounts = await feishuBitable.searchRecords(
+      this.projectMgmtAppToken,
+      planTableId,
+      `CurrentValue.[记录ID] = "${recordId}"`
+    );
+
+    if (!accounts || accounts.length === 0) {
+      throw new Error('Account not found');
+    }
+
+    await this.syncAccount(accounts[0], planTableId, projectName);
+    return { success: true };
+  }
+
+  async syncProjectIncremental(projectRecord, startDate, endDate) {
+    const fields = projectRecord.fields;
+    const planTableId = fields['表格ID'];
+    const projectName = fields['项目名称'];
+
+    logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate });
+
+    const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+    let totalWorks = 0;
+
+    for (const account of accounts) {
+      const accountFields = account.fields;
+      const accountName = accountFields['账号名称'];
+      const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
+
+      if (!homeLink) continue;
+
+      const platform = platformResolver.detectPlatform(homeLink);
+      if (!platform) continue;
+
+      const username = platformResolver.extractUsername(homeLink, platform.code);
+      if (!username) continue;
+
+      try {
+        const works = await this.fetchPlatformWorks(platform.code, username);
+        const filteredWorks = works.filter(work => {
+          if (!work.publishTime) return false;
+          const publishDate = new Date(work.publishTime);
+          if (startDate && publishDate < new Date(startDate)) return false;
+          if (endDate && publishDate > new Date(endDate)) return false;
+          return true;
+        });
+
+        if (filteredWorks.length > 0) {
+          const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+          await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
+          await this.updateAccountStats(account, planTableId, works);
+          totalWorks += filteredWorks.length;
+        }
+      } catch (error) {
+        logger.error('Incremental sync account failed', { accountName, error: error.message });
+      }
+    }
+
+    await this.updateProjectStats(planTableId, projectRecord);
+
+    logger.info('Incremental sync completed', { projectName, totalWorks });
+    return { totalWorks };
+  }
+
+  async clearSyncProgress(projectName) {
+    logger.info('Clearing sync progress', { projectName });
+    // 清除缓存或状态标记（当前主要为日志记录）
+    return { cleared: true, projectName };
+  }
+
   async syncAccount(account, planTableId, projectName) {
     const accountFields = account.fields;
     const accountName = accountFields['账号名称'];

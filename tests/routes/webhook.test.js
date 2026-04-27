@@ -42,6 +42,16 @@ jest.mock('../../src/services/report-service', () => ({
 }));
 
 describe('POST /api/webhook/button', () => {
+  const originalSecret = process.env.WEBHOOK_SECRET;
+
+  beforeAll(() => {
+    process.env.WEBHOOK_SECRET = 'test-secret';
+  });
+
+  afterAll(() => {
+    process.env.WEBHOOK_SECRET = originalSecret;
+  });
+
   it('should trigger sync action', async () => {
     const res = await request(app)
       .post('/api/webhook/button?token=test-secret')
@@ -89,11 +99,20 @@ describe('POST /api/webhook/button', () => {
       .send({ recordId: 'rec123', action: 'sync' });
 
     expect(res.statusCode).toBe(401);
-    process.env.WEBHOOK_SECRET = '';
   });
 });
 
 describe('POST /api/webhook/sync/:recordId', () => {
+  const originalSecret = process.env.WEBHOOK_SECRET;
+
+  beforeAll(() => {
+    process.env.WEBHOOK_SECRET = 'test-secret';
+  });
+
+  afterAll(() => {
+    process.env.WEBHOOK_SECRET = originalSecret;
+  });
+
   it('should trigger sync with valid token', async () => {
     const res = await request(app)
       .post('/api/webhook/sync/1?token=test-secret')
@@ -104,10 +123,8 @@ describe('POST /api/webhook/sync/:recordId', () => {
   });
 
   it('should reject without token', async () => {
-    process.env.WEBHOOK_SECRET = 'test-secret';
     const res = await request(app).post('/api/webhook/sync/1');
 
     expect(res.statusCode).toBe(401);
-    process.env.WEBHOOK_SECRET = '';
   });
 });

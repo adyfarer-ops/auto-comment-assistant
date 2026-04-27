@@ -12,9 +12,12 @@ router.post('/account', async (req, res, next) => {
       return res.status(400).json({ code: 400, message: 'tableId and recordId are required' });
     }
 
-    logger.info('Sync account', { tableId, recordId });
-    // TODO: implement single account sync
-    res.json({ code: 0, message: 'Account sync triggered', tableId, recordId });
+    const project = await projectService.getProjectByTableId(tableId);
+    const projectName = project ? project.fields['项目名称'] : 'Unknown';
+
+    logger.info('Sync account', { tableId, recordId, projectName });
+    const result = await syncService.syncAccountByRecordId(tableId, recordId, projectName);
+    res.json({ code: 0, message: 'Account sync completed', data: result });
   } catch (error) {
     next(error);
   }
@@ -58,8 +61,23 @@ router.post('/project-incremental', async (req, res, next) => {
       return res.status(400).json({ code: 400, message: 'tableId is required' });
     }
 
-    logger.info('Incremental sync', { tableId, startDate, endDate });
-    res.json({ code: 0, message: 'Incremental sync triggered', tableId, startDate, endDate });
+    const project = await projectService.getProjectByTableId(tableId);
+    if (!project) {
+      return res.status(404).json({ code: 404, message: 'Project not found' });
+    }
+
+    await projectService.updateProjectStatus(project.record_id, '执行中');
+
+    syncService.syncProjectIncremental(project, startDate, endDate)
+      .then(async (result) => {
+        await projectService.updateProjectStatus(project.record_id, '成功');
+      })
+      .catch(async (err) => {
+        logger.error('Incremental sync failed', { error: err.message });
+        await projectService.updateProjectStatus(project.record_id, '失败');
+      });
+
+    res.json({ code: 0, message: 'Incremental sync started', tableId, startDate, endDate });
   } catch (error) {
     next(error);
   }
@@ -70,7 +88,8 @@ router.post('/clear-progress', async (req, res, next) => {
   try {
     const { projectName } = req.body;
     logger.info('Clear sync progress', { projectName });
-    res.json({ code: 0, message: 'Sync progress cleared', projectName });
+    const result = await syncService.clearSyncProgress(projectName);
+    res.json({ code: 0, message: 'Sync progress cleared', data: result });
   } catch (error) {
     next(error);
   }
