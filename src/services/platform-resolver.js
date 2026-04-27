@@ -37,6 +37,8 @@ class PlatformResolver {
   extractUsername(url, platformCode) {
     try {
       const urlObj = new URL(url);
+      urlObj.search = ''; // 去掉查询参数
+      urlObj.hash = '';   // 去掉 hash
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
       switch (platformCode) {
@@ -44,8 +46,11 @@ class PlatformResolver {
           const raw = pathParts.find(p => p.startsWith('@')) || pathParts[0];
           return raw ? raw.replace(/^@/, '') : null;
         }
-        case 'YTB':
-          return pathParts.find(p => p.startsWith('@')) || pathParts[1];
+        case 'YTB': {
+          const cleanPath = urlObj.pathname.replace(/^\/c\/|^\/channel\//, '');
+          const parts = cleanPath.split('/').filter(Boolean);
+          return parts.find(p => p.startsWith('@')) || parts[0];
+        }
         case 'INS':
         case 'X':
         case 'FB':

@@ -22,6 +22,14 @@ class SyncService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  _normalizeNumber(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    if (typeof value === 'number') return value;
+    const cleaned = String(value).replace(/[,\s]/g, '');
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  }
+
   _formatDateTime(date) {
     const d = date || new Date();
     return Math.floor(d.getTime() / 1000);
@@ -320,24 +328,36 @@ class SyncService {
     const works = [];
 
     switch (platformCode) {
-      case 'TK': {
-        const videos = await tikhubApi.getTikTokUserVideos(username);
-        const items = videos.data?.itemList || videos.data?.videos || [];
-        if (items.length) {
-          works.push(...items.map(v => {
-            const stats = v.statistics || v.stats || {};
-            return {
-              workId: v.id || v.video_id || v.aweme_id,
-              title: v.desc || v.title || '',
-              link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
-              publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
-              playCount: parseInt(stats.play_count) || 0,
-              diggCount: parseInt(stats.digg_count) || 0,
-              commentCount: parseInt(stats.comment_count) || 0,
-              shareCount: parseInt(stats.share_count) || 0,
-              collectCount: parseInt(stats.collect_count) || 0,
-            };
-          }));
+      case 'TK':
+      case 'DY': {
+        try {
+          const videos = await tikhubApi.getTikTokUserVideos(username);
+          const items = videos.data?.itemList || videos.data?.videos || [];
+          if (items.length) {
+            works.push(...items.map(v => {
+              const stats = v.statistics || v.stats || {};
+              if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
+                logger.warn('TikHub returned play_count=0, possible data source limitation', { username });
+              }
+              return {
+                workId: v.id || v.video_id || v.aweme_id,
+                title: v.desc || v.title || '',
+                link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
+                publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
+                playCount: parseInt(stats.play_count) || 0,
+                diggCount: parseInt(stats.digg_count) || 0,
+                commentCount: parseInt(stats.comment_count) || 0,
+                shareCount: parseInt(stats.share_count) || 0,
+                collectCount: parseInt(stats.collect_count) || 0,
+              };
+            }));
+          }
+        } catch (error) {
+          if (platformCode === 'DY') {
+            logger.warn('Douyin fetch failed, returning empty works', { username, error: error.message });
+          } else {
+            throw error;
+          }
         }
         break;
       }
@@ -364,7 +384,7 @@ class SyncService {
             }
           }
         } catch (error) {
-          logger.error('YouTube API failed, possibly due to network restriction', { username, error: error.message });
+          logger.error('YouTube API failed, possibly due to network restriction', { username, error: error.message, platformCode: 'YTB' });
         }
         break;
       }
@@ -529,6 +549,11 @@ class SyncService {
   }
 
   async updateAccountStats(account, planTableId, works) {
+    if (!works || works.length === 0) {
+      logger.warn('Skipping account stats update due to empty works', { accountName: account.fields?.['账号名称'] });
+      return;
+    }
+
     const totalPlayCount = works.reduce((sum, w) => sum + (w.playCount || 0), 0);
     const publishedCount = works.length;
 
@@ -544,7 +569,6 @@ class SyncService {
   }
 
   calculateDateStats(works) {
-    const stats = {};
     const dateMap = new Map();
 
     works.forEach(work => {
@@ -555,18 +579,23 @@ class SyncService {
       }
     });
 
-    dateMap.forEach((count, key) => {
-      stats[key] = `${count}条`;
-    });
+    const entries = Array.from(dateMap.entries())
+      .sort((a, b) => {
+        const [ma, da] = a[0].match(/(\d+)月(\d+)日/).slice(1).map(Number);
+        const [mb, db] = b[0].match(/(\d+)月(\d+)日/).slice(1).map(Number);
+        return ma !== mb ? ma - mb : da - db;
+      })
+      .map(([key, count]) => `${key}: ${count}条`)
+      .join(', ');
 
-    return stats;
+    return { '发布日期统计': entries || '' };
   }
 
   async updateProjectStats(planTableId, projectRecord) {
     const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
-    const totalPlayCount = accounts.reduce((sum, a) => sum + (parseInt(a.fields['目前播放量']) || 0), 0);
-    const totalPublished = accounts.reduce((sum, a) => sum + (parseInt(a.fields['已发布']) || 0), 0);
+    const totalPlayCount = accounts.reduce((sum, a) => sum + this._normalizeNumber(a.fields['目前播放量']), 0);
+    const totalPublished = accounts.reduce((sum, a) => sum + this._normalizeNumber(a.fields['已发布']), 0);
 
     const versionProgress = this.calculateVersionProgress(projectRecord.fields);
 
