@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const feishuAuth = require('../services/feishu-auth');
+const feishuBitable = require('../services/feishu-bitable');
 const tikhubApi = require('../services/tikhub-api');
 const youtubeApi = require('../services/youtube-api');
 const platformResolver = require('../services/platform-resolver');
@@ -91,6 +92,58 @@ router.post('/test-video-analysis', async (req, res, next) => {
         analysis: result.analysis,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 列出 Base 下所有表格
+router.get('/tables', async (req, res, next) => {
+  try {
+    const appToken = req.query.appToken || req.app.locals.projectMgmtAppToken;
+    const tables = await feishuBitable.getAppTables(appToken);
+    res.json({ code: 0, data: tables.items || tables });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 查询指定表格的所有记录
+router.get('/records/:tableId', async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    const appToken = req.query.appToken || req.app.locals.projectMgmtAppToken;
+    const records = await feishuBitable.searchRecords(appToken, tableId);
+    res.json({ code: 0, data: records });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 批量迁移同步时间格式
+router.post('/migrate-sync-time', async (req, res, next) => {
+  try {
+    const { tableId, fieldName } = req.body;
+    if (!tableId || !fieldName) {
+      return res.status(400).json({ code: 400, message: 'tableId and fieldName are required' });
+    }
+
+    const appToken = req.app.locals.projectMgmtAppToken;
+    const records = await feishuBitable.searchRecords(appToken, tableId);
+    let migrated = 0;
+
+    for (const record of records) {
+      const value = record.fields[fieldName];
+      if (value && typeof value === 'number') {
+        const dateStr = new Date(value).toISOString();
+        await feishuBitable.updateRecord(appToken, tableId, record.record_id, {
+          [fieldName]: dateStr,
+        });
+        migrated++;
+      }
+    }
+
+    res.json({ code: 0, data: { migrated, total: records.length } });
   } catch (error) {
     next(error);
   }

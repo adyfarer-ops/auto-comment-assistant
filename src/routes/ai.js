@@ -3,9 +3,15 @@ const router = express.Router();
 const aiService = require('../services/ai-service');
 const projectService = require('../services/project-service');
 
-router.post('/suggestions/:recordId', async (req, res, next) => {
+// AI 项目运营建议
+router.post('/suggest/project', async (req, res, next) => {
   try {
-    const project = await projectService.getProjectByRecordId(req.params.recordId);
+    const { recordId } = req.body;
+    if (!recordId) {
+      return res.status(400).json({ code: 400, message: 'recordId is required' });
+    }
+
+    const project = await projectService.getProjectByRecordId(recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }

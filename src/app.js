@@ -13,6 +13,9 @@ const weeklyReportService = require('./services/weekly-report-service');
 const reportService = require('./services/report-service');
 const logService = require('./services/log-service');
 const statsService = require('./services/stats-service');
+const suggestionService = require('./services/suggestion-service');
+const tableResolver = require('./services/table-resolver');
+const videoExtractionService = require('./services/video-extraction-service');
 
 const app = express();
 
@@ -24,6 +27,10 @@ weeklyReportService.setProjectMgmtAppToken(projectMgmtAppToken);
 reportService.setProjectMgmtAppToken(projectMgmtAppToken);
 logService.setProjectMgmtAppToken(projectMgmtAppToken);
 statsService.setProjectMgmtAppToken(projectMgmtAppToken);
+suggestionService.setProjectMgmtAppToken(projectMgmtAppToken);
+tableResolver.setProjectMgmtAppToken(projectMgmtAppToken);
+
+app.locals.projectMgmtAppToken = projectMgmtAppToken;
 
 app.use(helmet());
 app.use(cors());

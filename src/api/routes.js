@@ -10,6 +10,7 @@ const aiRouter = require('../routes/ai');
 const webhookRouter = require('../routes/webhook');
 const debugRouter = require('../routes/debug');
 const videoRouter = require('../routes/video');
+const summarizeRouter = require('../routes/summarize');
 
 // 健康检查
 router.use('/health', healthRouter);
@@ -23,11 +24,14 @@ router.use('/sync', syncRouter);
 // 统计 API
 router.use('/stats', statsRouter);
 
-// 周报 / 复盘报告 API
-router.use('/reports', reportsRouter);
+// 周报 / 复盘报告 API（设计文档路径）
+router.use('/', reportsRouter);
 
 // AI 建议 API
-router.use('/ai', aiRouter);
+router.use('/', aiRouter);
+
+// 汇总 API
+router.use('/summarize', summarizeRouter);
 
 // Webhook 接口
 router.use('/webhook', webhookRouter);

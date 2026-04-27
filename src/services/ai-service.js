@@ -124,6 +124,64 @@ class AIService {
       throw error;
     }
   }
+
+  async callAnyProvider(prompt, systemPrompt = '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。') {
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ];
+
+    if (config.ai.moonshot.apiKey) {
+      return this.callMoonshotWithMessages(messages);
+    }
+    if (config.ai.doubao.apiKey) {
+      return this.callDoubaoWithMessages(messages);
+    }
+    if (config.ai.deepseek.apiKey) {
+      return this.callDeepSeekWithMessages(messages);
+    }
+
+    throw new Error('No AI provider configured');
+  }
+
+  async callMoonshotWithMessages(messages) {
+    const response = await axios.post(`${config.ai.moonshot.baseUrl}/chat/completions`, {
+      model: 'moonshot-v1-8k',
+      messages,
+      temperature: 0.7,
+    }, {
+      headers: { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 60000,
+      httpsAgent: this.agent,
+    });
+    return response.data.choices[0].message.content;
+  }
+
+  async callDoubaoWithMessages(messages) {
+    const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
+      model: 'doubao-pro-128k',
+      messages,
+      temperature: 0.7,
+    }, {
+      headers: { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 60000,
+      httpsAgent: this.agent,
+    });
+    return response.data.choices[0].message.content;
+  }
+
+  async callDeepSeekWithMessages(messages) {
+    const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
+      model: 'deepseek-chat',
+      messages,
+      temperature: 0.7,
+    }, {
+      headers: { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 60000,
+      httpsAgent: this.agent,
+    });
+    return response.data.choices[0].message.content;
+  }
 }
 
 module.exports = new AIService();

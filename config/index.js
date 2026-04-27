@@ -46,4 +46,13 @@ module.exports = {
   project: {
     managementTableToken: process.env.PROJECT_MANAGEMENT_TABLE_TOKEN,
   },
+
+  henghhengmao: {
+    apiKey: process.env.HENGHENGMAO_API_KEY,
+    baseUrl: process.env.HENGHENGMAO_BASE_URL || 'https://api.henghhengmao.com',
+  },
+
+  notify: {
+    chatId: process.env.NOTIFY_CHAT_ID,
+  },
 };
