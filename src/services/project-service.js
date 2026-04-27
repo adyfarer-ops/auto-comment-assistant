@@ -216,6 +216,28 @@ class ProjectService {
       }
       logger.info('Empty plan table created', { newTableId, tableName });
 
+      // 把系统默认的第一个字段改为"序号"（自动编号）
+      try {
+        const fieldsResult = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
+        const items = fieldsResult?.items || [];
+        const firstField = items[0];
+        if (firstField?.field_id) {
+          await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, firstField.field_id, {
+            field_name: '序号',
+            type: 1005,
+            property: {
+              options: [
+                { type: 'custom', value: 'NO.' },
+                { type: 'autoNumber', value: '3' },
+              ],
+            },
+          });
+          logger.info('Default field renamed to 序号', { tableId: newTableId, fieldId: firstField.field_id });
+        }
+      } catch (err) {
+        logger.warn('Failed to rename default field to 序号', { tableId: newTableId, error: err.message });
+      }
+
       const fieldIdMap = {};
 
       // 1-4 基础字段

@@ -103,6 +103,10 @@ class FeishuBitableService {
     return this.request('POST', `/apps/${appToken}/tables/${tableId}/fields`, fieldData);
   }
 
+  async updateField(appToken, tableId, fieldId, fieldData) {
+    return this.request('PUT', `/apps/${appToken}/tables/${tableId}/fields/${fieldId}`, fieldData);
+  }
+
   // === Records ===
   async getRecord(appToken, tableId, recordId) {
     return this.request('GET', `/apps/${appToken}/tables/${tableId}/records/${recordId}`);
