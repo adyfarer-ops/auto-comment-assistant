@@ -42,13 +42,81 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
       }
 
       case 'weekly': {
-        const report = await weeklyReportService.generateWeeklyReport(project);
-        return res.json({ code: 0, data: report });
+        const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成周报',
+          '状态': '进行中',
+          '开始时间': Math.floor(Date.now() / 1000),
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+        res.status(202).json({ code: 0, message: 'Weekly report generation started', traceId });
+
+        (async () => {
+          try {
+            await weeklyReportService.generateWeeklyReport(project);
+            await logService.createLog({
+              '项目名称': projectName,
+              '操作类型': '生成周报',
+              '状态': '成功',
+              '结束时间': Math.floor(Date.now() / 1000),
+              'traceId': traceId,
+              '触发来源': 'Webhook按钮',
+            });
+          } catch (err) {
+            logger.error('Webhook weekly report failed', { error: err.message, traceId });
+            await logService.createLog({
+              '项目名称': projectName,
+              '操作类型': '生成周报',
+              '状态': '失败',
+              '结束时间': Math.floor(Date.now() / 1000),
+              '错误信息': err.message,
+              'traceId': traceId,
+              '触发来源': 'Webhook按钮',
+            });
+          }
+        })();
+        return;
       }
 
       case 'review': {
-        const result = await reportService.generateReviewReport(project);
-        return res.json({ code: 0, data: result });
+        const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成复盘报告',
+          '状态': '进行中',
+          '开始时间': Math.floor(Date.now() / 1000),
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+        res.status(202).json({ code: 0, message: 'Review report generation started', traceId });
+
+        (async () => {
+          try {
+            await reportService.generateReviewReport(project);
+            await logService.createLog({
+              '项目名称': projectName,
+              '操作类型': '生成复盘报告',
+              '状态': '成功',
+              '结束时间': Math.floor(Date.now() / 1000),
+              'traceId': traceId,
+              '触发来源': 'Webhook按钮',
+            });
+          } catch (err) {
+            logger.error('Webhook review report failed', { error: err.message, traceId });
+            await logService.createLog({
+              '项目名称': projectName,
+              '操作类型': '生成复盘报告',
+              '状态': '失败',
+              '结束时间': Math.floor(Date.now() / 1000),
+              '错误信息': err.message,
+              'traceId': traceId,
+              '触发来源': 'Webhook按钮',
+            });
+          }
+        })();
+        return;
       }
 
       default:
@@ -91,8 +159,42 @@ router.post('/weekly/:recordId', verifyWebhookToken, async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    const report = await weeklyReportService.generateWeeklyReport(project);
-    res.json({ code: 0, data: report });
+    const projectName = project.fields['项目名称'];
+    const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await logService.createLog({
+      '项目名称': projectName,
+      '操作类型': '生成周报',
+      '状态': '进行中',
+      '开始时间': Math.floor(Date.now() / 1000),
+      'traceId': traceId,
+      '触发来源': 'Webhook按钮',
+    });
+    res.status(202).json({ code: 0, message: 'Weekly report generation started', traceId });
+
+    (async () => {
+      try {
+        await weeklyReportService.generateWeeklyReport(project);
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成周报',
+          '状态': '成功',
+          '结束时间': Math.floor(Date.now() / 1000),
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+      } catch (err) {
+        logger.error('Webhook weekly report failed', { error: err.message, traceId });
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成周报',
+          '状态': '失败',
+          '结束时间': Math.floor(Date.now() / 1000),
+          '错误信息': err.message,
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+      }
+    })();
   } catch (error) {
     next(error);
   }
@@ -105,8 +207,42 @@ router.post('/review/:recordId', verifyWebhookToken, async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    const result = await reportService.generateReviewReport(project);
-    res.json({ code: 0, data: result });
+    const projectName = project.fields['项目名称'];
+    const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await logService.createLog({
+      '项目名称': projectName,
+      '操作类型': '生成复盘报告',
+      '状态': '进行中',
+      '开始时间': Math.floor(Date.now() / 1000),
+      'traceId': traceId,
+      '触发来源': 'Webhook按钮',
+    });
+    res.status(202).json({ code: 0, message: 'Review report generation started', traceId });
+
+    (async () => {
+      try {
+        await reportService.generateReviewReport(project);
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成复盘报告',
+          '状态': '成功',
+          '结束时间': Math.floor(Date.now() / 1000),
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+      } catch (err) {
+        logger.error('Webhook review report failed', { error: err.message, traceId });
+        await logService.createLog({
+          '项目名称': projectName,
+          '操作类型': '生成复盘报告',
+          '状态': '失败',
+          '结束时间': Math.floor(Date.now() / 1000),
+          '错误信息': err.message,
+          'traceId': traceId,
+          '触发来源': 'Webhook按钮',
+        });
+      }
+    })();
   } catch (error) {
     next(error);
   }

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const projectService = require('../services/project-service');
+const logService = require('../services/log-service');
 const logger = require('../utils/logger');
 
 router.get('/', async (req, res, next) => {
@@ -20,6 +21,14 @@ router.post('/create-table', async (req, res, next) => {
     }
 
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await logService.createLog({
+      '项目名称': recordId,
+      '操作类型': '创建总表',
+      '状态': '进行中',
+      '开始时间': Math.floor(Date.now() / 1000),
+      'traceId': traceId,
+      '触发来源': req.body.triggerSource || 'API',
+    });
     res.status(202).json({ code: 0, message: 'Project table creation started', traceId });
 
     projectService.createProjectTable(recordId, { traceId, triggerSource: req.body.triggerSource || 'API' })
@@ -67,6 +76,14 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
     }
 
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await logService.createLog({
+      '项目名称': tableId,
+      '操作类型': '创建详情表',
+      '状态': '进行中',
+      '开始时间': Math.floor(Date.now() / 1000),
+      'traceId': traceId,
+      '触发来源': req.body?.triggerSource || 'API',
+    });
     res.status(202).json({ code: 0, message: 'Detail tables creation started', traceId });
 
     projectService.createProjectDetailTables(tableId, { traceId, triggerSource: req.body?.triggerSource || 'API' })

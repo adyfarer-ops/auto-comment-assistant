@@ -42,10 +42,10 @@ class SyncService {
     const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const triggerSource = options.triggerSource || 'API调用';
 
-    return syncQueue.enqueue(`project:${projectName}`, async () => {
-      logger.info('Starting project sync', { projectName, planTableId, traceId });
-      await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    logger.info('Starting project sync', { projectName, planTableId, traceId });
+    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
+    return syncQueue.enqueue(`project:${projectName}`, async () => {
       try {
         const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
         let totalWorks = 0;
@@ -124,12 +124,12 @@ class SyncService {
     const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const triggerSource = options.triggerSource || 'API调用';
 
+    logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
+    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+
     return syncQueue.enqueue(`project:${projectName}:incremental`, async () => {
       const parsedStart = this._parseDate(startDate);
       const parsedEnd = this._parseDate(endDate);
-
-      logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
-      await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
       let totalWorks = 0;
       let totalErrors = 0;
