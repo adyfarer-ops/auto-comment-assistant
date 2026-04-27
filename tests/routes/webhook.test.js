@@ -33,7 +33,7 @@ jest.mock('../../src/services/sync-service', () => ({
 describe('POST /webhook/sync/:recordId', () => {
   it('should trigger sync with valid token', async () => {
     const res = await request(app)
-      .post('/webhook/sync/1?token=test-secret')
+      .post('/api/webhook/sync/1?token=test-secret')
       .set('x-webhook-token', 'test-secret');
 
     expect(res.statusCode).toBe(200);
@@ -42,7 +42,7 @@ describe('POST /webhook/sync/:recordId', () => {
 
   it('should reject without token', async () => {
     process.env.WEBHOOK_SECRET = 'test-secret';
-    const res = await request(app).post('/webhook/sync/1');
+    const res = await request(app).post('/api/webhook/sync/1');
 
     expect(res.statusCode).toBe(401);
     process.env.WEBHOOK_SECRET = '';

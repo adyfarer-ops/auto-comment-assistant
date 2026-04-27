@@ -5,18 +5,14 @@ const cors = require('cors');
 const config = require('../config');
 const logger = require('./utils/logger');
 const { errorHandler } = require('./middleware/error');
-const healthRouter = require('./routes/health');
-const projectsRouter = require('./routes/projects');
-const syncRouter = require('./routes/sync');
-const reportsRouter = require('./routes/reports');
-const aiRouter = require('./routes/ai');
-const webhookRouter = require('./routes/webhook');
+const apiRoutes = require('./api/routes');
 
 const projectService = require('./services/project-service');
 const syncService = require('./services/sync-service');
 const weeklyReportService = require('./services/weekly-report-service');
 const reportService = require('./services/report-service');
 const logService = require('./services/log-service');
+const statsService = require('./services/stats-service');
 
 const app = express();
 
@@ -27,18 +23,15 @@ syncService.setProjectMgmtAppToken(projectMgmtAppToken);
 weeklyReportService.setProjectMgmtAppToken(projectMgmtAppToken);
 reportService.setProjectMgmtAppToken(projectMgmtAppToken);
 logService.setProjectMgmtAppToken(projectMgmtAppToken);
+statsService.setProjectMgmtAppToken(projectMgmtAppToken);
 
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/health', healthRouter);
-app.use('/api/projects', projectsRouter);
-app.use('/api/sync', syncRouter);
-app.use('/api/reports', reportsRouter);
-app.use('/api/ai', aiRouter);
-app.use('/webhook', webhookRouter);
+// API 路由总入口
+app.use('/api', apiRoutes);
 
 app.get('/', (req, res) => {
   res.json({ name: 'feishu-project-agent', version: '1.0.0', env: config.nodeEnv });
