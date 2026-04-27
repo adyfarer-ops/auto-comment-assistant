@@ -71,6 +71,35 @@ class NotifyService {
 
     return this.sendMessage(chatId, text);
   }
+
+  async sendSyncResult(projectName, status, options = {}) {
+    const chatId = process.env.NOTIFY_CHAT_ID;
+    if (!chatId) {
+      logger.warn('NOTIFY_CHAT_ID not set, skipping sync notification');
+      return;
+    }
+
+    const { traceId, accountsCount, totalWorks, totalErrors, errorMessage, triggerSource } = options;
+
+    let text;
+    if (status === '成功') {
+      text = `✅ **${projectName}** 同步成功\n\n` +
+        `账号数: ${accountsCount || 0}\n` +
+        `作品数: ${totalWorks || 0}\n` +
+        `失败数: ${totalErrors || 0}\n` +
+        `来源: ${triggerSource || 'API'}\n` +
+        `traceId: ${traceId || ''}\n` +
+        `时间: ${new Date().toLocaleString('zh-CN')}`;
+    } else {
+      text = `❌ **${projectName}** 同步失败\n\n` +
+        `错误: ${errorMessage || '未知错误'}\n` +
+        `来源: ${triggerSource || 'API'}\n` +
+        `traceId: ${traceId || ''}\n` +
+        `时间: ${new Date().toLocaleString('zh-CN')}`;
+    }
+
+    return this.sendMessage(chatId, text);
+  }
 }
 
 module.exports = new NotifyService();
