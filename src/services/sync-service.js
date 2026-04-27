@@ -707,7 +707,7 @@ class SyncService {
 
     const result = {};
     for (const [key, count] of dateMap) {
-      result[key] = count;
+      result[key] = String(count);
     }
 
     return result;
