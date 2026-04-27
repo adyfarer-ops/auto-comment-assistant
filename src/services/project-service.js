@@ -57,24 +57,35 @@ class ProjectService {
     const tableName = `${projectName.split('-')[0]}-${accountName.replace(/\s+/g, '')}${platformCode}-作品详情`;
 
     try {
-      const result = await feishuBitable.createTable(this.projectMgmtAppToken, tableName, [
-        { field_name: 'ID', type: 'auto_number' },
-        { field_name: '总表记录ID', type: 'text' },
-        { field_name: '作品ID', type: 'text' },
-        { field_name: '作品标题', type: 'text' },
-        { field_name: '作品链接', type: 'text' },
-        { field_name: '发布时间', type: 'text' },
-        { field_name: '播放量', type: 'number' },
-        { field_name: '点赞数', type: 'number' },
-        { field_name: '评论数', type: 'number' },
-        { field_name: '分享数', type: 'number' },
-        { field_name: '收藏数', type: 'number' },
-        { field_name: '数据状态', type: 'text' },
-        { field_name: '同步时间', type: 'date' },
-      ]);
+      const createResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName);
+      const newTableId = createResult.table_id;
+      if (!newTableId) {
+        throw new Error('创建作品详情表失败，未返回 table_id');
+      }
+      logger.info('Empty detail table created', { tableName, tableId: newTableId });
 
-      logger.info('Detail table created', { tableName, tableId: result.table_id });
-      return result.table_id;
+      const detailFields = [
+        { field_name: 'ID', type: 1005 },
+        { field_name: '总表记录ID', type: 1 },
+        { field_name: '作品ID', type: 1 },
+        { field_name: '作品标题', type: 1 },
+        { field_name: '作品链接', type: 1 },
+        { field_name: '发布时间', type: 1 },
+        { field_name: '播放量', type: 2, property: { formatter: '0' } },
+        { field_name: '点赞数', type: 2, property: { formatter: '0' } },
+        { field_name: '评论数', type: 2, property: { formatter: '0' } },
+        { field_name: '分享数', type: 2, property: { formatter: '0' } },
+        { field_name: '收藏数', type: 2, property: { formatter: '0' } },
+        { field_name: '数据状态', type: 1 },
+        { field_name: '同步时间', type: 5, property: { date_formatter: 'yyyy/MM/dd HH:mm' } },
+      ];
+      for (const f of detailFields) {
+        await feishuBitable.createField(this.projectMgmtAppToken, newTableId, f);
+        await this._sleep(300);
+      }
+
+      logger.info('Detail table fields populated', { tableName, tableId: newTableId, fieldCount: detailFields.length });
+      return newTableId;
     } catch (error) {
       logger.error('Failed to create detail table', { tableName, error: error.message });
       throw error;
