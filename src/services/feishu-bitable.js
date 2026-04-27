@@ -88,9 +88,11 @@ class FeishuBitableService {
 
   // === Table ===
   async createTable(appToken, name, fields = []) {
-    return this.request('POST', `/apps/${appToken}/tables`, {
-      table: { name, fields },
-    });
+    const body = { table: { name } };
+    if (fields && fields.length > 0) {
+      body.table.fields = fields;
+    }
+    return this.request('POST', `/apps/${appToken}/tables`, body);
   }
 
   async getTableFields(appToken, tableId) {
