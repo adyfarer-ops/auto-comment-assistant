@@ -190,8 +190,12 @@ class ProjectService {
     logger.info('createProjectTable start', { recordId, traceId });
 
     const { projectName, startDate, endDate } = await this._readManagementRecord(managementTableId, recordId);
-    if (!projectName || !startDate || !endDate) {
-      throw new Error('管理记录缺少必要字段: 项目名称、开始日期、结束日期');
+    const missing = [];
+    if (!projectName) missing.push('项目名称');
+    if (!startDate) missing.push('开始日期');
+    if (!endDate) missing.push('结束日期');
+    if (missing.length > 0) {
+      throw new Error(`管理记录缺少必要字段: ${missing.join('、')}`);
     }
 
     const tableName = `${projectName}-项目规划`;
