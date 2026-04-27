@@ -132,7 +132,7 @@ class SyncService {
 
     logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
     const projectStartTime = Date.now();
-    const projectLogId = await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    const projectLogId = await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource, operationType: '周期增量同步项目' });
 
     return syncQueue.enqueue(`project:${projectName}:incremental`, async () => {
       const parsedStart = this._parseDate(startDate);
@@ -165,6 +165,7 @@ class SyncService {
             platformCode: platform.code,
             traceId,
             triggerSource,
+            operationType: '周期增量同步账号',
           });
 
           try {
@@ -204,6 +205,7 @@ class SyncService {
                 triggerSource,
                 logRecordId: accountLogId,
                 startTime: accountStartTime,
+                operationType: '周期增量同步账号',
                 stats: {
                   original: works.length,
                   filtered: filteredWorks.length,
@@ -224,6 +226,7 @@ class SyncService {
                 triggerSource,
                 logRecordId: accountLogId,
                 startTime: accountStartTime,
+                operationType: '周期增量同步账号',
               });
             }
           } catch (error) {
@@ -238,6 +241,7 @@ class SyncService {
               triggerSource,
               logRecordId: accountLogId,
               startTime: accountStartTime,
+              operationType: '周期增量同步账号',
             });
           }
         }
@@ -251,6 +255,7 @@ class SyncService {
           triggerSource,
           logRecordId: projectLogId,
           startTime: projectStartTime,
+          operationType: '周期增量同步项目',
           stats: { fetched: totalWorks },
         });
 
@@ -258,7 +263,7 @@ class SyncService {
         return { totalWorks, totalErrors };
       } catch (error) {
         logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
-        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime });
+        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime, operationType: '周期增量同步项目' });
         await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
         throw error;
       }
@@ -658,7 +663,11 @@ class SyncService {
       ...dateStats,
     };
 
-    await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, updateFields);
+    try {
+      await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, updateFields);
+    } catch (error) {
+      logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: error.message, code: error.code });
+    }
   }
 
   calculateDateStats(works) {

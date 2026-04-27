@@ -50,14 +50,14 @@ class LogService {
   }
 
   async logSyncStart(projectName, options = {}) {
-    const { accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用' } = options;
+    const { accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用', operationType } = options;
     return this.createLog({
       '项目名称': projectName,
       '账号名称': accountName || '',
       '总表ID': masterTableId || '',
       '详情表ID': detailTableId || '',
       '账号记录ID': accountRecordId || '',
-      '操作类型': accountName ? '同步账号' : '同步项目',
+      '操作类型': operationType || (accountName ? '同步账号' : '同步项目'),
       '状态': '进行中',
       '开始时间': this._formatDateTime(),
       '平台类型': platformCode || '',
@@ -67,14 +67,14 @@ class LogService {
   }
 
   async logSyncEnd(projectName, status, options = {}) {
-    const { logRecordId, accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用', errorMessage = '', stats = {} } = options;
+    const { logRecordId, accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用', errorMessage = '', stats = {}, operationType } = options;
     const fields = {
       '项目名称': projectName,
       '账号名称': accountName || '',
       '总表ID': masterTableId || '',
       '详情表ID': detailTableId || '',
       '账号记录ID': accountRecordId || '',
-      '操作类型': accountName ? '同步账号' : '同步项目',
+      '操作类型': operationType || (accountName ? '同步账号' : '同步项目'),
       '状态': status,
       '结束时间': this._formatDateTime(),
       '平台类型': platformCode || '',
