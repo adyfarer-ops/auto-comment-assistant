@@ -77,12 +77,20 @@ class SyncService {
           stats: { fetched: totalWorks },
         });
 
-        await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
+        }
         return { accountsCount: accounts.length, totalWorks, totalErrors };
       } catch (error) {
         logger.error('Project sync failed', { projectName, error: error.message, traceId });
         await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime });
-        await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult failure notification failed', { projectName, error: notifyError.message, traceId });
+        }
         throw error;
       }
     });
@@ -105,10 +113,18 @@ class SyncService {
         }
 
         const result = await this.syncAccount(accounts[0], planTableId, projectName, { traceId, triggerSource });
-        await notifyService.sendSyncResult(projectName, '成功', { traceId, recordId, totalWorks: result?.worksCount || 0, accountsCount: 1, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '成功', { traceId, recordId, totalWorks: result?.worksCount || 0, accountsCount: 1, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
+        }
         return { success: true, worksCount: result?.worksCount || 0 };
       } catch (error) {
-        await notifyService.sendSyncResult(projectName, '失败', { traceId, recordId, errorMessage: error.message, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '失败', { traceId, recordId, errorMessage: error.message, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult failure notification failed', { projectName, error: notifyError.message, traceId });
+        }
         throw error;
       }
     });
@@ -259,12 +275,20 @@ class SyncService {
           stats: { fetched: totalWorks },
         });
 
-        await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
+        }
         return { totalWorks, totalErrors };
       } catch (error) {
         logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
         await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime, operationType: '周期增量同步项目' });
-        await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        try {
+          await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        } catch (notifyError) {
+          logger.warn('sendSyncResult failure notification failed', { projectName, error: notifyError.message, traceId });
+        }
         throw error;
       }
     });

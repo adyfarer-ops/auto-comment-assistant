@@ -433,6 +433,13 @@ class ProjectService {
       if (viewsFieldId) fieldIdMap['目前播放量'] = viewsFieldId;
       await this._sleep(300);
 
+      // 10.5 发布日期统计
+      const dateStatsRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '发布日期统计', type: 1,
+      });
+      if (dateStatsRes?.field?.field_id) fieldIdMap['发布日期统计'] = dateStatsRes.field.field_id;
+      await this._sleep(300);
+
       // 11 总完成播放（公式）
       await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
         field_name: '总完成播放', type: 20, property: {
