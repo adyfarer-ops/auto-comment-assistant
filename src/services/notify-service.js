@@ -43,6 +43,27 @@ class NotifyService {
     return this.sendMessage(chatId, text);
   }
 
+  async sendWeeklyReportResult(projectName, result) {
+    const chatId = process.env.NOTIFY_CHAT_ID;
+    if (!chatId) {
+      logger.warn('NOTIFY_CHAT_ID not set, skipping weekly report notification');
+      return;
+    }
+
+    let text = `📋 **${projectName}** 周报已生成\n\n` +
+      `✅ 账号数: ${result.accountsCount}\n` +
+      `📝 总发布数: ${result.totalPublished}\n` +
+      `▶️ 总播放量: ${result.totalPlayCount}\n` +
+      `📈 平均完成率: ${result.avgCompletionRate}\n` +
+      `⏱️ 时间: ${new Date().toLocaleString('zh-CN')}`;
+
+    if (result.docUrl) {
+      text += `\n\n📄 文档链接: ${result.docUrl}`;
+    }
+
+    return this.sendMessage(chatId, text);
+  }
+
   async sendError(chatId, projectName, error) {
     const text = `❌ **${projectName}** 同步失败\n\n` +
       `错误信息: ${error.message}\n` +

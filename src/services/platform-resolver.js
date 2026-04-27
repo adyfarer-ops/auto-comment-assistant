@@ -40,8 +40,10 @@ class PlatformResolver {
       const pathParts = urlObj.pathname.split('/').filter(Boolean);
 
       switch (platformCode) {
-        case 'TK':
-          return pathParts.find(p => p.startsWith('@')) || pathParts[0];
+        case 'TK': {
+          const raw = pathParts.find(p => p.startsWith('@')) || pathParts[0];
+          return raw ? raw.replace(/^@/, '') : null;
+        }
         case 'YTB':
           return pathParts.find(p => p.startsWith('@')) || pathParts[1];
         case 'INS':

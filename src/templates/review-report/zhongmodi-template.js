@@ -113,7 +113,7 @@ module.exports = {
   },
 
   // 生成飞书 Docx blocks
-  buildDocBlocks(data) {
+  buildDocBlocks(data, aiContent = {}) {
     const blocks = [];
 
     // 标题
@@ -159,8 +159,8 @@ module.exports = {
         if (f['播放来源']) blocks.push(this.text(`播放来源：${f['播放来源']}`));
       }
 
-      blocks.push(this.text('本版本亮点：_待AI填充_'));
-      blocks.push(this.text('本版本缺点：_待AI填充_'));
+      blocks.push(this.text(`本版本亮点：${aiContent['亮点'] || aiContent['本版本亮点'] || '_待AI填充_'}`));
+      blocks.push(this.text(`本版本缺点：${aiContent['缺点'] || aiContent['本版本缺点'] || '_待AI填充_'}`));
 
       // 2）内容分类及分析
       blocks.push(this.bold('2）内容分类及分析'));
@@ -171,7 +171,7 @@ module.exports = {
         blocks.push(this.text(`链接：${work.link || ''}`));
         blocks.push(this.text(`内容简述：${work.title || ''}`));
         blocks.push(this.text(`播放量：${(work.playCount / 10000).toFixed(0)}w`));
-        blocks.push(this.text('成功要素：_待AI填充_'));
+        blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
         blocks.push({ block_type: 9 });
       }
 
@@ -187,8 +187,8 @@ module.exports = {
 
       // 3）核心问题及优化方向
       blocks.push(this.bold('3）核心问题及优化方向'));
-      blocks.push(this.text('核心问题：_待AI填充_'));
-      blocks.push(this.text('优化方向：_待AI填充_'));
+      blocks.push(this.text(`核心问题：${aiContent['核心问题'] || '_待AI填充_'}`));
+      blocks.push(this.text(`优化方向：${aiContent['优化方向'] || '_待AI填充_'}`));
       blocks.push({ block_type: 9 });
     }
 
@@ -220,6 +220,12 @@ module.exports = {
     prompt += `4. 低播放原因常指向平台差异或素材局限\n`;
     prompt += `5. 优化方向要具体可执行（如"尝试吊带袜天使画风"、"形成爆款系列"）\n`;
     prompt += `6. 解说剪辑类账号需给出版本内容规划建议\n`;
+    prompt += `\n请按以下格式输出：\n`;
+    prompt += `[亮点]\n...\n\n`;
+    prompt += `[缺点]\n...\n\n`;
+    prompt += `[成功要素]\n...\n\n`;
+    prompt += `[核心问题]\n...\n\n`;
+    prompt += `[优化方向]\n...\n`;
 
     return prompt;
   },

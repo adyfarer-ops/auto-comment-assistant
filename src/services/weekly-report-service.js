@@ -1,5 +1,9 @@
+const axios = require('axios');
 const feishuBitable = require('./feishu-bitable');
 const feishuSpreadsheet = require('./feishu-spreadsheet');
+const feishuAuth = require('./feishu-auth');
+const aiService = require('./ai-service');
+const notifyService = require('./notify-service');
 const logger = require('../utils/logger');
 
 class WeeklyReportService {
@@ -19,7 +23,7 @@ class WeeklyReportService {
     const sheetToken = fields['周报Sheet'];
 
     if (!startDate || !endDate) {
-      throw new Error('周报开始日期或结束日期未设置');
+      throw new Error('周报开始日期或周报结束日期未设置');
     }
 
     logger.info('Generating weekly report', {
@@ -70,6 +74,18 @@ class WeeklyReportService {
       }, 0) / accounts.length).toFixed(2) + '%';
     }
 
+    // AI 分析建议
+    let aiSuggestions = '';
+    try {
+      const aiPrompt = this.buildAIPrompt(reportData);
+      aiSuggestions = await aiService.callAnyProvider(aiPrompt);
+      logger.info('AI suggestions generated for weekly report');
+    } catch (error) {
+      logger.error('AI suggestions generation failed', { error: error.message });
+      aiSuggestions = 'AI 建议生成失败，请稍后重试。';
+    }
+    reportData.aiSuggestions = aiSuggestions;
+
     // 写入飞书 Spreadsheet
     if (sheetToken) {
       try {
@@ -80,8 +96,178 @@ class WeeklyReportService {
       }
     }
 
+    // 生成飞书 Docx 文档
+    let docUrl = null;
+    try {
+      docUrl = await this.createWeeklyReportDoc(reportData);
+      logger.info('Weekly report doc created', { docUrl });
+    } catch (error) {
+      logger.error('Failed to create weekly report doc', { error: error.message });
+    }
+
+    // 更新项目管理表：周报开始日期、周报结束日期（时间戳秒级）
+    try {
+      const startTimestamp = Math.floor(startDate.getTime() / 1000);
+      const endTimestamp = Math.floor(endDate.getTime() / 1000);
+      await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, {
+        '周报开始日期': startTimestamp,
+        '周报结束日期': endTimestamp,
+      });
+      logger.info('Project management table updated with weekly report dates');
+    } catch (error) {
+      logger.error('Failed to update project management table', { error: error.message });
+    }
+
+    // 发送飞书通知
+    try {
+      await notifyService.sendWeeklyReportResult(fields['项目名称'], {
+        accountsCount: reportData.summary.totalAccounts,
+        totalPublished: reportData.summary.totalPublished,
+        totalPlayCount: reportData.summary.totalPlayCount,
+        avgCompletionRate: reportData.summary.avgCompletionRate,
+        docUrl,
+      });
+      logger.info('Weekly report notification sent');
+    } catch (error) {
+      logger.error('Failed to send weekly report notification', { error: error.message });
+    }
+
     logger.info('Weekly report generated', { summary: reportData.summary });
     return reportData;
+  }
+
+  buildAIPrompt(reportData) {
+    const { projectName, period, summary, accounts } = reportData;
+    const accountLines = accounts.map(a =>
+      `- ${a.name}(${a.platform}): 已发布${a.published}条, 播放量${a.playCount}, 完成率${a.completionRate}`
+    ).join('\n');
+
+    return `请为以下游戏海外社媒运营项目生成本周报分析建议：
+
+项目: ${projectName}
+统计周期: ${period}
+总发布数: ${summary.totalPublished}
+总播放量: ${summary.totalPlayCount}
+平均完成率: ${summary.avgCompletionRate}
+
+各账号数据:
+${accountLines}
+
+请给出：
+1. 本周数据表现总结（整体播放量、完成率、稿均等核心指标）
+2. 各平台/账号表现分析（哪些表现好，哪些需要关注）
+3. 下周重点方向建议
+4. 风险预警（如有数据异常）`;
+  }
+
+  async createWeeklyReportDoc(reportData) {
+    const token = await feishuAuth.getAppToken();
+    const title = `${reportData.projectName} 周报 (${reportData.period})`;
+
+    // 创建文档
+    const createRes = await axios.post('https://open.feishu.cn/open-apis/docx/v1/documents', {
+      title,
+    }, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (createRes.data.code !== 0) {
+      throw new Error(`Create doc failed: ${createRes.data.msg}`);
+    }
+
+    const documentId = createRes.data.data.document.document_id;
+
+    // 构建 blocks
+    const blocks = [];
+
+    // 标题
+    blocks.push(this.heading1(title));
+
+    // 统计周期
+    blocks.push(this.text(`统计周期：${reportData.period}`));
+    blocks.push(this.text(''));
+
+    // 汇总数据表格
+    blocks.push(this.heading1('汇总数据'));
+    blocks.push(this.table(
+      ['指标', '数值'],
+      [
+        ['总账号数', String(reportData.summary.totalAccounts)],
+        ['总发布数', String(reportData.summary.totalPublished)],
+        ['总播放量', String(reportData.summary.totalPlayCount)],
+        ['平均完成率', reportData.summary.avgCompletionRate],
+      ]
+    ));
+    blocks.push(this.text(''));
+
+    // 各账号明细表格
+    blocks.push(this.heading1('各账号明细'));
+    blocks.push(this.table(
+      ['账号名称', '平台', '已发布', '保底条数', '播放量', '完成率', '负责人'],
+      reportData.accounts.map(a => [
+        a.name,
+        a.platform,
+        String(a.published),
+        String(a.target),
+        String(a.playCount),
+        a.completionRate,
+        a.responsible,
+      ])
+    ));
+    blocks.push(this.text(''));
+
+    // AI 分析建议
+    blocks.push(this.heading1('AI 分析建议'));
+    const paragraphs = reportData.aiSuggestions.split('\n').filter(p => p.trim());
+    for (const para of paragraphs) {
+      blocks.push(this.text(para));
+    }
+
+    // 批量写入 blocks
+    await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
+      children: blocks,
+      index: 0,
+    }, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
+
+    return `https://vcnsfx7fytb0.feishu.cn/docx/${documentId}`;
+  }
+
+  heading1(text) {
+    return {
+      block_type: 3,
+      heading1: { elements: [{ text_run: { content: text } }] },
+    };
+  }
+
+  text(text) {
+    return {
+      block_type: 2,
+      text: { elements: [{ text_run: { content: text } }] },
+    };
+  }
+
+  table(headers, rows) {
+    const allRows = [headers, ...rows];
+    return {
+      block_type: 14,
+      table: {
+        table_width: headers.length,
+        table_rows: allRows.length,
+        table_columns: headers.length,
+        merge_info: [],
+      },
+      children: allRows.map(row => ({
+        block_type: 15,
+        table_cell: {
+          children: row.map(cell => ({
+            block_type: 2,
+            text: { elements: [{ text_run: { content: cell } }] },
+          })),
+        },
+      })),
+    };
   }
 
   async writeToSpreadsheet(sheetToken, reportData) {

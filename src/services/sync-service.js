@@ -2,7 +2,9 @@ const feishuBitable = require('./feishu-bitable');
 const tikhubApi = require('./tikhub-api');
 const youtubeApi = require('./youtube-api');
 const platformResolver = require('./platform-resolver');
+const logService = require('./log-service');
 const logger = require('../utils/logger');
+const projectService = require('./project-service');
 
 class SyncService {
   constructor() {
@@ -13,28 +15,58 @@ class SyncService {
     this.projectMgmtAppToken = token;
   }
 
-  async syncProject(projectRecord) {
+  _formatDateTime(date) {
+    const d = date || new Date();
+    return Math.floor(d.getTime() / 1000);
+  }
+
+  async syncProject(projectRecord, options = {}) {
     const fields = projectRecord.fields;
     const planTableId = fields['表格ID'];
     const projectName = fields['项目名称'];
+    const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const triggerSource = options.triggerSource || 'API调用';
 
-    logger.info('Starting project sync', { projectName, planTableId });
+    logger.info('Starting project sync', { projectName, planTableId, traceId });
+    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
-    // 获取项目规划表中的所有账号
-    const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+    try {
+      const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+      let totalWorks = 0;
+      let totalErrors = 0;
 
-    for (const account of accounts) {
-      await this.syncAccount(account, planTableId, projectName);
+      for (const account of accounts) {
+        try {
+          const result = await this.syncAccount(account, planTableId, projectName, { traceId, triggerSource });
+          if (result && result.worksCount) totalWorks += result.worksCount;
+        } catch (error) {
+          totalErrors++;
+          logger.error('Account sync failed in project sync', { accountName: account.fields?.['账号名称'], error: error.message });
+        }
+      }
+
+      await this.updateProjectStats(planTableId, projectRecord);
+
+      logger.info('Project sync completed', { projectName, accountsCount: accounts.length, totalWorks, totalErrors, traceId });
+      await logService.logSyncSuccess(projectName, {
+        masterTableId: planTableId,
+        traceId,
+        triggerSource,
+        stats: { fetched: totalWorks },
+      });
+
+      return { accountsCount: accounts.length, totalWorks, totalErrors };
+    } catch (error) {
+      logger.error('Project sync failed', { projectName, error: error.message, traceId });
+      await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+      throw error;
     }
-
-    // 更新项目统计
-    await this.updateProjectStats(planTableId, projectRecord);
-
-    logger.info('Project sync completed', { projectName, accountsCount: accounts.length });
-    return { accountsCount: accounts.length };
   }
 
-  async syncAccountByRecordId(planTableId, recordId, projectName) {
+  async syncAccountByRecordId(planTableId, recordId, projectName, options = {}) {
+    const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const triggerSource = options.triggerSource || 'API调用';
+
     const accounts = await feishuBitable.searchRecords(
       this.projectMgmtAppToken,
       planTableId,
@@ -45,106 +77,219 @@ class SyncService {
       throw new Error('Account not found');
     }
 
-    await this.syncAccount(accounts[0], planTableId, projectName);
-    return { success: true };
+    const result = await this.syncAccount(accounts[0], planTableId, projectName, { traceId, triggerSource });
+    return { success: true, worksCount: result?.worksCount || 0 };
   }
 
-  async syncProjectIncremental(projectRecord, startDate, endDate) {
+  _parseDate(input) {
+    if (!input) return null;
+    if (input instanceof Date) return input;
+    const str = String(input).replace(/-/g, '/');
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  async syncProjectIncremental(projectRecord, startDate, endDate, options = {}) {
     const fields = projectRecord.fields;
     const planTableId = fields['表格ID'];
     const projectName = fields['项目名称'];
+    const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const triggerSource = options.triggerSource || 'API调用';
 
-    logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate });
+    const parsedStart = this._parseDate(startDate);
+    const parsedEnd = this._parseDate(endDate);
 
-    const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+    logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
+    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+
     let totalWorks = 0;
+    let totalErrors = 0;
 
-    for (const account of accounts) {
-      const accountFields = account.fields;
-      const accountName = accountFields['账号名称'];
-      const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
+    try {
+      const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
-      if (!homeLink) continue;
+      for (const account of accounts) {
+        const accountFields = account.fields;
+        const accountName = accountFields['账号名称'];
+        const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
 
-      const platform = platformResolver.detectPlatform(homeLink);
-      if (!platform) continue;
+        if (!homeLink) continue;
 
-      const username = platformResolver.extractUsername(homeLink, platform.code);
-      if (!username) continue;
+        const platform = platformResolver.detectPlatform(homeLink);
+        if (!platform) continue;
 
-      try {
-        const works = await this.fetchPlatformWorks(platform.code, username);
-        const filteredWorks = works.filter(work => {
-          if (!work.publishTime) return false;
-          const publishDate = new Date(work.publishTime);
-          if (startDate && publishDate < new Date(startDate)) return false;
-          if (endDate && publishDate > new Date(endDate)) return false;
-          return true;
+        const username = platformResolver.extractUsername(homeLink, platform.code);
+        if (!username) continue;
+
+        await logService.logSyncStart(projectName, {
+          accountName,
+          masterTableId: planTableId,
+          accountRecordId: account.record_id,
+          platformCode: platform.code,
+          traceId,
+          triggerSource,
         });
 
-        if (filteredWorks.length > 0) {
+        try {
+          const works = await this.fetchPlatformWorks(platform.code, username);
+          const filteredWorks = works.filter(work => {
+            if (!work.publishTime) return false;
+            const publishDate = new Date(work.publishTime);
+            if (parsedStart && publishDate < parsedStart) return false;
+            if (parsedEnd && publishDate > parsedEnd) return false;
+            return true;
+          });
+
           const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
-          await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
-          await this.updateAccountStats(account, planTableId, works);
-          totalWorks += filteredWorks.length;
+
+          let createdCount = 0;
+          let updatedCount = 0;
+          let skippedCount = 0;
+
+          if (filteredWorks.length > 0 && detailTableId) {
+            const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
+            createdCount = syncResult.createdCount || 0;
+            updatedCount = syncResult.updatedCount || 0;
+            await this.updateAccountStats(account, planTableId, works);
+            totalWorks += filteredWorks.length;
+          } else {
+            skippedCount = works.length - filteredWorks.length;
+          }
+
+          if (detailTableId) {
+            await logService.logSyncSuccess(projectName, {
+              accountName,
+              masterTableId: planTableId,
+              detailTableId,
+              accountRecordId: account.record_id,
+              platformCode: platform.code,
+              traceId,
+              triggerSource,
+              stats: {
+                original: works.length,
+                filtered: filteredWorks.length,
+                fetched: filteredWorks.length,
+                created: createdCount,
+                updated: updatedCount,
+                skipped: skippedCount,
+              },
+            });
+          } else {
+            await logService.logSyncEnd(projectName, '跳过', {
+              accountName,
+              masterTableId: planTableId,
+              detailTableId,
+              accountRecordId: account.record_id,
+              platformCode: platform.code,
+              traceId,
+              triggerSource,
+            });
+          }
+        } catch (error) {
+          totalErrors++;
+          logger.error('Incremental sync account failed', { accountName, error: error.message, traceId });
+          await logService.logSyncError(projectName, error, {
+            accountName,
+            masterTableId: planTableId,
+            accountRecordId: account.record_id,
+            platformCode: platform.code,
+            traceId,
+            triggerSource,
+          });
         }
-      } catch (error) {
-        logger.error('Incremental sync account failed', { accountName, error: error.message });
       }
+
+      await this.updateProjectStats(planTableId, projectRecord);
+
+      logger.info('Incremental sync completed', { projectName, totalWorks, totalErrors, traceId });
+      await logService.logSyncSuccess(projectName, {
+        masterTableId: planTableId,
+        traceId,
+        triggerSource,
+        stats: { fetched: totalWorks },
+      });
+
+      return { totalWorks, totalErrors };
+    } catch (error) {
+      logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
+      await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+      throw error;
     }
-
-    await this.updateProjectStats(planTableId, projectRecord);
-
-    logger.info('Incremental sync completed', { projectName, totalWorks });
-    return { totalWorks };
   }
 
   async clearSyncProgress(projectName) {
     logger.info('Clearing sync progress', { projectName });
-    // 清除缓存或状态标记（当前主要为日志记录）
     return { cleared: true, projectName };
   }
 
-  async syncAccount(account, planTableId, projectName) {
+  async syncAccount(account, planTableId, projectName, options = {}) {
+    const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const triggerSource = options.triggerSource || 'API调用';
     const accountFields = account.fields;
     const accountName = accountFields['账号名称'];
     const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
 
     if (!homeLink) {
       logger.warn('Account missing home link', { accountName });
-      return;
+      return { worksCount: 0 };
     }
 
     const platform = platformResolver.detectPlatform(homeLink);
     if (!platform) {
       logger.warn('Unknown platform', { accountName, homeLink });
-      return;
+      return { worksCount: 0 };
     }
 
     const username = platformResolver.extractUsername(homeLink, platform.code);
     if (!username) {
       logger.warn('Cannot extract username', { accountName, homeLink, platform: platform.code });
-      return;
+      return { worksCount: 0 };
     }
 
-    logger.info('Syncing account', { accountName, platform: platform.code, username });
+    logger.info('Syncing account', { accountName, platform: platform.code, username, traceId });
+    await logService.logSyncStart(projectName, {
+      accountName,
+      masterTableId: planTableId,
+      accountRecordId: account.record_id,
+      platformCode: platform.code,
+      traceId,
+      triggerSource,
+    });
 
     try {
-      // 获取作品详情表ID
       const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
-
-      // 抓取平台数据
       const works = await this.fetchPlatformWorks(platform.code, username);
 
-      // 同步到作品详情表
-      await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
+      if (detailTableId) {
+        await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
+        await this.updateAccountStats(account, planTableId, works);
+      }
 
-      // 更新账号统计
-      await this.updateAccountStats(account, planTableId, works);
+      logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
+      await logService.logSyncSuccess(projectName, {
+        accountName,
+        masterTableId: planTableId,
+        detailTableId,
+        accountRecordId: account.record_id,
+        platformCode: platform.code,
+        traceId,
+        triggerSource,
+        stats: { fetched: works.length },
+      });
 
-      logger.info('Account sync completed', { accountName, worksCount: works.length });
+      return { worksCount: works.length };
     } catch (error) {
-      logger.error('Account sync failed', { accountName, error: error.message });
+      logger.error('Account sync failed', { accountName, error: error.message, traceId });
+      await logService.logSyncError(projectName, error, {
+        accountName,
+        masterTableId: planTableId,
+        accountRecordId: account.record_id,
+        platformCode: platform.code,
+        traceId,
+        triggerSource,
+      });
+      throw error;
     }
   }
 
@@ -153,87 +298,105 @@ class SyncService {
 
     switch (platformCode) {
       case 'TK': {
-        const userInfo = await tikhubApi.getTikTokUserInfo(username);
         const videos = await tikhubApi.getTikTokUserVideos(username);
-        if (videos.data?.videos) {
-          works.push(...videos.data.videos.map(v => ({
-            workId: v.video_id || v.aweme_id,
-            title: v.title || v.desc,
-            link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.video_id}`,
-            publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
-            playCount: parseInt(v.statistics?.play_count) || 0,
-            diggCount: parseInt(v.statistics?.digg_count) || 0,
-            commentCount: parseInt(v.statistics?.comment_count) || 0,
-            shareCount: parseInt(v.statistics?.share_count) || 0,
-            collectCount: parseInt(v.statistics?.collect_count) || 0,
-          })));
+        const items = videos.data?.itemList || videos.data?.videos || [];
+        if (items.length) {
+          works.push(...items.map(v => {
+            const stats = v.statistics || v.stats || {};
+            return {
+              workId: v.id || v.video_id || v.aweme_id,
+              title: v.desc || v.title || '',
+              link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
+              publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
+              playCount: parseInt(stats.play_count) || 0,
+              diggCount: parseInt(stats.digg_count) || 0,
+              commentCount: parseInt(stats.comment_count) || 0,
+              shareCount: parseInt(stats.share_count) || 0,
+              collectCount: parseInt(stats.collect_count) || 0,
+            };
+          }));
         }
         break;
       }
       case 'YTB': {
-        const channel = await youtubeApi.getChannelByHandle(username) ||
-                       await youtubeApi.getChannelById(username);
-        if (channel) {
-          const videosData = await youtubeApi.getVideos(channel.id);
-          const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
-          if (videoIds.length > 0) {
-            const stats = await youtubeApi.getVideoStatistics(videoIds);
-            works.push(...stats.map(v => ({
-              workId: v.id,
-              title: v.snippet?.title,
-              link: `https://www.youtube.com/watch?v=${v.id}`,
-              publishTime: v.snippet?.publishedAt ? v.snippet.publishedAt.split('T')[0] : null,
-              playCount: parseInt(v.statistics?.viewCount) || 0,
-              diggCount: parseInt(v.statistics?.likeCount) || 0,
-              commentCount: parseInt(v.statistics?.commentCount) || 0,
-              shareCount: 0,
-              collectCount: 0,
-            })));
+        try {
+          const channel = await youtubeApi.getChannelByHandle(username) ||
+                         await youtubeApi.getChannelById(username);
+          if (channel) {
+            const videosData = await youtubeApi.getVideos(channel.id);
+            const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
+            if (videoIds.length > 0) {
+              const stats = await youtubeApi.getVideoStatistics(videoIds);
+              works.push(...stats.map(v => ({
+                workId: v.id,
+                title: v.snippet?.title,
+                link: `https://www.youtube.com/watch?v=${v.id}`,
+                publishTime: v.snippet?.publishedAt ? v.snippet.publishedAt.split('T')[0] : null,
+                playCount: parseInt(v.statistics?.viewCount) || 0,
+                diggCount: parseInt(v.statistics?.likeCount) || 0,
+                commentCount: parseInt(v.statistics?.commentCount) || 0,
+                shareCount: 0,
+                collectCount: 0,
+              })));
+            }
           }
+        } catch (error) {
+          logger.error('YouTube API failed, possibly due to network restriction', { username, error: error.message });
         }
         break;
       }
       case 'INS': {
         const posts = await tikhubApi.getInstagramUserPosts(username);
-        if (posts.data?.items) {
-          works.push(...posts.data.items.map(p => ({
-            workId: p.id || p.shortcode,
-            title: p.caption?.text?.slice(0, 100) || '',
-            link: `https://www.instagram.com/p/${p.shortcode}/`,
-            publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
-            playCount: parseInt(p.video_play_count) || parseInt(p.view_count) || 0,
-            diggCount: parseInt(p.like_count) || 0,
-            commentCount: parseInt(p.comment_count) || 0,
-            shareCount: 0,
-            collectCount: parseInt(p.save_count) || 0,
-          })));
+        const edges = posts.data?.edges || posts.data?.items || [];
+        if (edges.length) {
+          works.push(...edges.map(item => {
+            const p = item.node || item;
+            return {
+              workId: p.id || p.pk || p.code,
+              title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
+              link: p.link || `https://www.instagram.com/p/${p.code}/`,
+              publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
+              playCount: parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
+              diggCount: parseInt(p.like_count) || 0,
+              commentCount: parseInt(p.comment_count) || 0,
+              shareCount: 0,
+              collectCount: parseInt(p.save_count) || 0,
+            };
+          }));
         }
         break;
       }
       case 'X': {
         const tweets = await tikhubApi.getXUserTweets(username);
-        if (tweets.data?.tweets) {
-          works.push(...tweets.data.tweets.map(t => ({
-            workId: t.id || t.rest_id,
-            title: t.legacy?.full_text?.slice(0, 100) || '',
-            link: `https://x.com/${username}/status/${t.id || t.rest_id}`,
-            publishTime: t.legacy?.created_at ? new Date(t.legacy.created_at).toISOString().split('T')[0] : null,
-            playCount: parseInt(t.views?.count) || parseInt(t.legacy?.views?.count) || 0,
-            diggCount: parseInt(t.legacy?.favorite_count) || 0,
-            commentCount: parseInt(t.legacy?.reply_count) || 0,
-            shareCount: parseInt(t.legacy?.retweet_count) || 0,
-            collectCount: parseInt(t.legacy?.bookmark_count) || 0,
+        let tweetList = [];
+        if (tweets.data?.timeline && typeof tweets.data.timeline === 'object') {
+          tweetList = Object.values(tweets.data.timeline);
+        } else if (Array.isArray(tweets.data?.tweets)) {
+          tweetList = tweets.data.tweets;
+        }
+        if (tweetList.length) {
+          works.push(...tweetList.map(t => ({
+            workId: t.tweet_id || t.id || t.rest_id,
+            title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
+            link: `https://x.com/${username}/status/${t.tweet_id || t.id || t.rest_id}`,
+            publishTime: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : null,
+            playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
+            diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
+            commentCount: parseInt(t.replies) || parseInt(t.legacy?.reply_count) || 0,
+            shareCount: parseInt(t.retweets) || parseInt(t.quotes) || parseInt(t.legacy?.retweet_count) || 0,
+            collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
           })));
         }
         break;
       }
       case 'RD': {
         const posts = await tikhubApi.getRedditUserPosts(username);
-        if (posts.data?.posts) {
-          works.push(...posts.data.posts.map(p => ({
+        const postList = posts.data?.posts || posts.data?.items || [];
+        if (postList.length) {
+          works.push(...postList.map(p => ({
             workId: p.id,
             title: p.title?.slice(0, 100) || '',
-            link: `https://www.reddit.com${p.permalink}`,
+            link: p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
             publishTime: p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null,
             playCount: parseInt(p.score) || 0,
             diggCount: parseInt(p.ups) || 0,
@@ -246,8 +409,9 @@ class SyncService {
       }
       case 'FB': {
         const posts = await tikhubApi.getFacebookUserPosts(username);
-        if (posts.data?.posts) {
-          works.push(...posts.data.posts.map(p => ({
+        const postList = posts.data?.posts || posts.data?.items || [];
+        if (postList.length) {
+          works.push(...postList.map(p => ({
             workId: p.id,
             title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
             link: p.permalink_url || `https://www.facebook.com/${p.id}`,
@@ -272,7 +436,6 @@ class SyncService {
     const tableName = `${projectName.split('-')[0]}-${accountName.replace(/\s+/g, '')}${platformCode}-作品详情`;
 
     try {
-      // 从 Base 中搜索匹配的表
       const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
       const matched = tables.items?.find(t => t.name === tableName);
 
@@ -281,47 +444,73 @@ class SyncService {
         return matched.table_id;
       }
 
-      logger.warn('Detail table not found', { tableName });
-      return null;
+      logger.info('Detail table not found, creating', { tableName });
+      const newTableId = await projectService.createDetailTable(projectName, accountName, platformCode);
+      return newTableId;
     } catch (error) {
-      logger.error('Failed to lookup detail table', { tableName, error: error.message });
+      logger.error('Failed to lookup or create detail table', { tableName, error: error.message });
       return null;
     }
   }
 
   async syncWorksToDetailTable(detailTableId, works, accountRecordId) {
-    if (!detailTableId || !works.length) return;
+    if (!detailTableId || !works.length) return { createdCount: 0, updatedCount: 0 };
 
-    const now = Date.now();
-    const records = works.map(work => ({
-      '作品ID': String(work.workId),
-      '作品标题': work.title,
-      '作品链接': work.link,
-      '发布时间': work.publishTime,
-      '播放量': work.playCount,
-      '点赞数': work.diggCount,
-      '评论数': work.commentCount,
-      '分享数': work.shareCount,
-      '收藏数': work.collectCount,
-      '数据状态': '正常',
-      '同步时间': now,
-      '总表记录ID': accountRecordId,
-    }));
+    const now = this._formatDateTime();
+    const allRecords = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
+    const existingMap = new Map();
+    for (const r of allRecords) {
+      const workId = r.fields?.['作品ID'];
+      if (workId) {
+        existingMap.set(String(workId), r.record_id);
+      }
+    }
 
-    await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, records);
+    const toCreate = [];
+    const toUpdate = [];
+
+    for (const work of works) {
+      const fields = {
+        '作品ID': String(work.workId),
+        '作品标题': work.title,
+        '作品链接': work.link,
+        '发布时间': work.publishTime,
+        '播放量': Number(work.playCount) || 0,
+        '点赞数': Number(work.diggCount) || 0,
+        '评论数': Number(work.commentCount) || 0,
+        '分享数': Number(work.shareCount) || 0,
+        '收藏数': Number(work.collectCount) || 0,
+        '数据状态': '正常',
+        '同步时间': now,
+        '总表记录ID': accountRecordId,
+      };
+      const recordId = existingMap.get(String(work.workId));
+      if (recordId) {
+        toUpdate.push({ recordId, fields });
+      } else {
+        toCreate.push(fields);
+      }
+    }
+
+    if (toCreate.length > 0) {
+      await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, toCreate);
+    }
+    if (toUpdate.length > 0) {
+      await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, toUpdate);
+    }
+
+    return { createdCount: toCreate.length, updatedCount: toUpdate.length };
   }
 
   async updateAccountStats(account, planTableId, works) {
     const totalPlayCount = works.reduce((sum, w) => sum + (w.playCount || 0), 0);
     const publishedCount = works.length;
 
-    // 按日期统计发布数量
     const dateStats = this.calculateDateStats(works);
 
     const updateFields = {
       '目前播放量': totalPlayCount,
-      '已发布': String(publishedCount),
-      '粉丝总量': account.fields['粉丝总量'], // 保持原值
+      '已发布': publishedCount,
       ...dateStats,
     };
 
@@ -356,11 +545,11 @@ class SyncService {
     const versionProgress = this.calculateVersionProgress(projectRecord.fields);
 
     const updateFields = {
-      '更新日期': Date.now(),
+      '更新日期': this._formatDateTime(),
     };
 
     if (versionProgress !== null) {
-      updateFields['版本进度'] = String(versionProgress);
+      updateFields['版本进度'] = versionProgress;
     }
 
     await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, updateFields);
@@ -387,7 +576,7 @@ class SyncService {
     if (now >= endTime) return 1;
 
     const progress = (now - startTime) / (endTime - startTime);
-    return progress.toFixed(6);
+    return parseFloat(progress.toFixed(6));
   }
 }
 

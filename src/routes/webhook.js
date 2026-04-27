@@ -22,22 +22,20 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    logger.info('Webhook button triggered', { recordId, action, projectName: project.fields['项目名称'] });
+    const projectName = project.fields['项目名称'];
+    logger.info('Webhook button triggered', { recordId, action, projectName });
 
     switch (action) {
       case 'sync': {
         await projectService.updateProjectStatus(project.record_id, '执行中');
-        await logService.logSyncStart(project.fields['项目名称']);
 
-        syncService.syncProject(project)
-          .then(async (result) => {
+        syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
+          .then(async () => {
             await projectService.updateProjectStatus(project.record_id, '成功');
-            await logService.logSyncSuccess(project.fields['项目名称'], `Synced ${result.accountsCount} accounts`);
           })
           .catch(async (err) => {
             logger.error('Webhook sync failed', { error: err.message });
             await projectService.updateProjectStatus(project.record_id, '失败');
-            await logService.logSyncError(project.fields['项目名称'], err);
           });
 
         return res.json({ code: 0, message: 'Sync triggered via webhook' });
@@ -70,17 +68,14 @@ router.post('/sync/:recordId', verifyWebhookToken, async (req, res, next) => {
     }
 
     await projectService.updateProjectStatus(project.record_id, '执行中');
-    await logService.logSyncStart(project.fields['项目名称']);
 
-    syncService.syncProject(project)
-      .then(async (result) => {
+    syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
+      .then(async () => {
         await projectService.updateProjectStatus(project.record_id, '成功');
-        await logService.logSyncSuccess(project.fields['项目名称'], `Synced ${result.accountsCount} accounts`);
       })
       .catch(async (err) => {
         logger.error('Webhook sync failed', { error: err.message });
         await projectService.updateProjectStatus(project.record_id, '失败');
-        await logService.logSyncError(project.fields['项目名称'], err);
       });
 
     res.json({ code: 0, message: 'Sync triggered via webhook' });

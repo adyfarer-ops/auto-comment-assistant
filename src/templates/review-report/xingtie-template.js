@@ -119,7 +119,7 @@ module.exports = {
     };
   },
 
-  buildDocBlocks(data) {
+  buildDocBlocks(data, aiContent = {}) {
     const blocks = [];
 
     // 标题
@@ -165,8 +165,8 @@ module.exports = {
       if (f['用户画像']) blocks.push(this.text(`用户画像：${f['用户画像']}`));
       if (f['播放来源']) blocks.push(this.text(`播放来源：${f['播放来源']}`));
 
-      blocks.push(this.text('本版本亮点：_待AI填充_'));
-      blocks.push(this.text('本版本缺点：_待AI填充_'));
+      blocks.push(this.text(`本版本亮点：${aiContent['亮点'] || aiContent['本版本亮点'] || '_待AI填充_'}`));
+      blocks.push(this.text(`本版本缺点：${aiContent['缺点'] || aiContent['本版本缺点'] || '_待AI填充_'}`));
 
       // 2）内容分析
       blocks.push(this.bold('2）内容分析'));
@@ -175,7 +175,7 @@ module.exports = {
         blocks.push(this.text(`链接：${acc.topWork.link || ''}`));
         blocks.push(this.text(`内容简述：${acc.topWork.title || ''}`));
         blocks.push(this.text(`播放量：${acc.topWork.playCount?.toLocaleString() || 0}`));
-        blocks.push(this.text('成功要素：_待AI填充_'));
+        blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
       }
       blocks.push(this.bold('b. 低播放内容分析'));
       blocks.push(this.table(
@@ -190,14 +190,14 @@ module.exports = {
       // 3）增长情况及原因
       blocks.push(this.bold('3）增长情况及原因'));
       blocks.push(this.text('本版本播放增长与粉丝增速变化，主要原因包括：'));
-      blocks.push(this.bullet('_待AI填充_'));
-      blocks.push(this.bullet('_待AI填充_'));
-      blocks.push(this.bullet('_待AI填充_'));
+      blocks.push(this.bullet(aiContent['增长情况及原因'] || '_待AI填充_'));
+      blocks.push(this.bullet(aiContent['增长情况'] || '_待AI填充_'));
+      blocks.push(this.bullet(aiContent['增长原因'] || '_待AI填充_'));
 
       // 4）核心问题及优化方向
       blocks.push(this.bold('4）核心问题及优化方向'));
-      blocks.push(this.text('核心问题：_待AI填充_'));
-      blocks.push(this.text('优化方向：_待AI填充_'));
+      blocks.push(this.text(`核心问题：${aiContent['核心问题'] || '_待AI填充_'}`));
+      blocks.push(this.text(`优化方向：${aiContent['优化方向'] || '_待AI填充_'}`));
       blocks.push({ block_type: 9 });
     }
 
@@ -238,6 +238,13 @@ module.exports = {
     prompt += `5. 低播放原因要具体（审美疲劳、画风改动、旧梗重复）\n`;
     prompt += `6. 优化方向要具体可执行（如"维持画风不变"、"穿插其他IP角色"、"优先新选题新趋势"）\n`;
     prompt += `7. 如有联动/活动，需单独做专项复盘（时间线、流量节点、内容分类）\n`;
+    prompt += `\n请按以下格式输出：\n`;
+    prompt += `[亮点]\n...\n\n`;
+    prompt += `[缺点]\n...\n\n`;
+    prompt += `[成功要素]\n...\n\n`;
+    prompt += `[核心问题]\n...\n\n`;
+    prompt += `[优化方向]\n...\n\n`;
+    prompt += `[增长情况及原因]\n...\n`;
 
     return prompt;
   },

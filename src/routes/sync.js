@@ -16,7 +16,9 @@ router.post('/account', async (req, res, next) => {
     const projectName = project ? project.fields['项目名称'] : 'Unknown';
 
     logger.info('Sync account', { tableId, recordId, projectName });
-    const result = await syncService.syncAccountByRecordId(tableId, recordId, projectName);
+    const result = await syncService.syncAccountByRecordId(tableId, recordId, projectName, {
+      triggerSource: 'API调用',
+    });
     res.json({ code: 0, message: 'Account sync completed', data: result });
   } catch (error) {
     next(error);
@@ -38,7 +40,7 @@ router.post('/project', async (req, res, next) => {
 
     await projectService.updateProjectStatus(project.record_id, '执行中');
 
-    syncService.syncProject(project)
+    syncService.syncProject(project, { triggerSource: 'API调用' })
       .then(async () => {
         await projectService.updateProjectStatus(project.record_id, '成功');
       })
@@ -68,7 +70,7 @@ router.post('/project-incremental', async (req, res, next) => {
 
     await projectService.updateProjectStatus(project.record_id, '执行中');
 
-    syncService.syncProjectIncremental(project, startDate, endDate)
+    syncService.syncProjectIncremental(project, startDate, endDate, { triggerSource: 'API调用' })
       .then(async (result) => {
         await projectService.updateProjectStatus(project.record_id, '成功');
       })

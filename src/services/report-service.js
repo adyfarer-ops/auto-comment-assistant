@@ -48,24 +48,30 @@ class ReportService {
     );
 
     // 生成 AI 运营建议（模板特定 prompt）
-    let aiSuggestions = '';
+    let aiContent = {};
     try {
-      const aiPrompt = template.buildAIPrompt(fields['项目名称'], accounts, worksMap);
-      aiSuggestions = await aiService.callAnyProvider(aiPrompt);
+      const aiPrompt = template.buildAIPrompt(fields['项目名称'], accounts, worksMap) +
+        '\n\n请按以下格式输出：\n' +
+        '[亮点]\n...\n\n' +
+        '[缺点]\n...\n\n' +
+        '[成功要素]\n...\n\n' +
+        '[核心问题]\n...\n\n' +
+        '[优化方向]\n...\n';
+      const aiSuggestions = await aiService.callAnyProvider(aiPrompt);
+      aiContent = this.parseAISuggestions(aiSuggestions);
     } catch (error) {
       logger.error('AI suggestions generation failed', { error: error.message });
-      aiSuggestions = 'AI 建议生成失败，请稍后重试。';
+      aiContent = {
+        '亮点': 'AI 建议生成失败，请稍后重试。',
+        '缺点': 'AI 建议生成失败，请稍后重试。',
+        '成功要素': 'AI 建议生成失败，请稍后重试。',
+        '核心问题': 'AI 建议生成失败，请稍后重试。',
+        '优化方向': 'AI 建议生成失败，请稍后重试。',
+      };
     }
 
     // 生成飞书文档 blocks（模板特定）
-    const docBlocks = template.buildDocBlocks(reportData);
-
-    // 追加 AI 建议 blocks
-    docBlocks.push(template.heading2('AI 运营建议'));
-    const paragraphs = aiSuggestions.split('\n').filter(p => p.trim());
-    for (const para of paragraphs) {
-      docBlocks.push(template.text(para));
-    }
+    const docBlocks = template.buildDocBlocks(reportData, aiContent);
 
     // 创建飞书文档
     const docUrl = await this.createFeishuDoc(fields['项目名称'], docBlocks);
@@ -111,6 +117,16 @@ class ReportService {
     }
 
     return worksMap;
+  }
+
+  parseAISuggestions(aiText) {
+    const sections = {};
+    const regex = /\[(.+?)\]\n?([\s\S]*?)(?=\n\[|$)/g;
+    let match;
+    while ((match = regex.exec(aiText)) !== null) {
+      sections[match[1]] = match[2].trim();
+    }
+    return sections;
   }
 
   extractPlatformCode(accountName) {

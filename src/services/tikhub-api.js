@@ -31,12 +31,19 @@ class TikHubApiService {
 
   // TikTok
   async getTikTokUserInfo(username) {
-    return this.request('GET', '/api/v1/tiktok/web/fetch_user_profile', { unique_id: username });
+    return this.request('GET', '/api/v1/tiktok/web/fetch_user_profile', { uniqueId: username });
   }
 
   async getTikTokUserVideos(username, cursor = 0) {
-    return this.request('GET', '/api/v1/tiktok/web/fetch_user_post_videos', {
-      unique_id: username,
+    // First get profile to obtain secUid
+    const profile = await this.getTikTokUserInfo(username);
+    const secUid = profile?.data?.userInfo?.user?.secUid;
+    if (!secUid) {
+      logger.warn('TikTok secUid not found', { username });
+      return { data: { itemList: [] } };
+    }
+    return this.request('GET', '/api/v1/tiktok/web/fetch_user_post', {
+      secUid,
       cursor,
       count: 35,
     });
@@ -44,13 +51,13 @@ class TikHubApiService {
 
   // Instagram
   async getInstagramUserInfo(username) {
-    return this.request('GET', '/api/v1/instagram/web/fetch_user_profile_by_username', { username });
+    return this.request('GET', '/api/v1/instagram/v3/get_user_profile', { username });
   }
 
   async getInstagramUserPosts(username, end_cursor = '') {
-    return this.request('GET', '/api/v1/instagram/web/fetch_user_posts_by_username', {
+    return this.request('GET', '/api/v1/instagram/v3/get_user_posts', {
       username,
-      end_cursor,
+      after: end_cursor,
       count: 12,
     });
   }
@@ -61,10 +68,9 @@ class TikHubApiService {
   }
 
   async getXUserTweets(username, cursor = '') {
-    return this.request('GET', '/api/v1/twitter/web/fetch_user_tweets', {
+    return this.request('GET', '/api/v1/twitter/web/fetch_user_post_tweet', {
       screen_name: username,
       cursor,
-      count: 20,
     });
   }
 
