@@ -84,7 +84,7 @@ class LogService {
 
     const { startTime } = options;
     if (startTime) {
-      fields['耗时'] = Date.now() - startTime;
+      fields['耗时'] = String(Date.now() - startTime);
     }
 
     if (logRecordId) {
@@ -111,9 +111,9 @@ class LogService {
         const startTime = fields['开始时间'];
         if (startTime && (now - startTime) > timeoutMs) {
           await this.updateLog(record.record_id, {
-            '状态': '异常',
+            '状态': '异常终止',
             '结束时间': now,
-            '耗时': now - startTime,
+            '耗时': String(now - startTime),
             '错误信息': '任务超时或系统中断',
           });
           fixed++;
