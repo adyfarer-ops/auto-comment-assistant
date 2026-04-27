@@ -19,6 +19,7 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
 
     const project = await projectService.getProjectByRecordId(recordId);
     if (!project) {
+      logger.warn('Webhook project not found', { recordId, action });
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 

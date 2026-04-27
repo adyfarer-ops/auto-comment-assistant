@@ -27,12 +27,12 @@ class ProjectService {
   }
 
   async getProjectByRecordId(recordId) {
-    const records = await feishuBitable.searchRecords(
-      this.projectMgmtAppToken,
-      'tblxbkkh03Kw10lI',
-      `CurrentValue.[序号] = "${recordId}"`
-    );
-    return records[0] || null;
+    try {
+      const result = await feishuBitable.getRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', recordId);
+      return result?.record || null;
+    } catch (error) {
+      return null;
+    }
   }
 
   async getProjectByTableId(tableId) {
