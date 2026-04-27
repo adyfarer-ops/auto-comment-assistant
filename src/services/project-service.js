@@ -1,5 +1,6 @@
 const feishuBitable = require('./feishu-bitable');
 const platformResolver = require('./platform-resolver');
+const logService = require('./log-service');
 const logger = require('../utils/logger');
 
 class ProjectService {
@@ -188,36 +189,63 @@ class ProjectService {
     const managementTableId = 'tblxbkkh03Kw10lI';
     const traceId = options.traceId || `tr_${Date.now()}`;
     logger.info('createProjectTable start', { recordId, traceId });
+    let projectName = '';
 
-    const { projectName, startDate, endDate } = await this._readManagementRecord(managementTableId, recordId);
-    const missing = [];
-    if (!projectName) missing.push('项目名称');
-    if (!startDate) missing.push('开始日期');
-    if (!endDate) missing.push('结束日期');
-    if (missing.length > 0) {
-      throw new Error(`管理记录缺少必要字段: ${missing.join('、')}`);
+    try {
+      const record = await this._readManagementRecord(managementTableId, recordId);
+      projectName = record.projectName;
+      const { startDate, endDate } = record;
+      const missing = [];
+      if (!projectName) missing.push('项目名称');
+      if (!startDate) missing.push('开始日期');
+      if (!endDate) missing.push('结束日期');
+      if (missing.length > 0) {
+        throw new Error(`管理记录缺少必要字段: ${missing.join('、')}`);
+      }
+
+      const tableName = projectName.endsWith('-项目规划') ? projectName : `${projectName}-项目规划`;
+      const existing = await this._checkTableExists(tableName);
+      if (existing) {
+        throw new Error(`项目规划表已存在: ${tableName}`);
+      }
+
+      const createResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName);
+      const newTableId = createResult.table_id;
+      if (!newTableId) {
+        throw new Error('创建表失败，未返回 table_id');
+      }
+      logger.info('Empty plan table created', { newTableId, tableName });
+
+      const fieldIdMap = await this._createBaseFields(newTableId);
+      await this._createDateFields(newTableId, startDate, endDate);
+      await this._createFormulaFields(newTableId, fieldIdMap);
+      await this._writeBackTableId(managementTableId, recordId, newTableId);
+
+      logger.info('createProjectTable completed', { newTableId, tableName, traceId });
+
+      await logService.createLog({
+        '项目名称': projectName,
+        '操作类型': '创建总表',
+        '状态': '成功',
+        '结束时间': Math.floor(Date.now() / 1000),
+        '总表ID': newTableId,
+        'traceId': traceId,
+        '触发来源': options.triggerSource || 'API',
+      });
+
+      return { success: true, tableId: newTableId, tableName, projectName, startDate, endDate };
+    } catch (error) {
+      await logService.createLog({
+        '项目名称': projectName || '',
+        '操作类型': '创建总表',
+        '状态': '失败',
+        '结束时间': Math.floor(Date.now() / 1000),
+        '错误信息': error.message,
+        'traceId': traceId,
+        '触发来源': options.triggerSource || 'API',
+      });
+      throw error;
     }
-
-    const tableName = projectName.endsWith('-项目规划') ? projectName : `${projectName}-项目规划`;
-    const existing = await this._checkTableExists(tableName);
-    if (existing) {
-      throw new Error(`项目规划表已存在: ${tableName}`);
-    }
-
-    const createResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName);
-    const newTableId = createResult.table_id;
-    if (!newTableId) {
-      throw new Error('创建表失败，未返回 table_id');
-    }
-    logger.info('Empty plan table created', { newTableId, tableName });
-
-    const fieldIdMap = await this._createBaseFields(newTableId);
-    await this._createDateFields(newTableId, startDate, endDate);
-    await this._createFormulaFields(newTableId, fieldIdMap);
-    await this._writeBackTableId(managementTableId, recordId, newTableId);
-
-    logger.info('createProjectTable completed', { newTableId, tableName, traceId });
-    return { success: true, tableId: newTableId, tableName, projectName, startDate, endDate };
   }
 
   async _readManagementRecord(managementTableId, recordId) {
@@ -242,12 +270,13 @@ class ProjectService {
       { field_name: '账号名称', type: 1 },
       { field_name: '负责人', type: 1 },
       { field_name: '制作', type: 1 },
+      { field_name: '主页链接', type: 15 },
       { field_name: '粉丝总量', type: 2, property: { formatter: '0' } },
       { field_name: '目标播放量', type: 2, property: { formatter: '0' } },
+      { field_name: '保底条数', type: 2, property: { formatter: '0' } },
       { field_name: '已发布', type: 2, property: { formatter: '0' } },
       { field_name: '待发布', type: 2, property: { formatter: '0' } },
-      { field_name: '保底条数', type: 2, property: { formatter: '0' } },
-      { field_name: '主页链接', type: 1 },
+      { field_name: '目前播放量', type: 2, property: { formatter: '0' } },
     ];
     const fieldIdMap = {};
     for (const f of baseFields) {
@@ -282,14 +311,7 @@ class ProjectService {
   }
 
   async _createFormulaFields(tableId, fieldIdMap) {
-    const viewsResult = await feishuBitable.createField(this.projectMgmtAppToken, tableId, {
-      field_name: '目前播放量',
-      type: 2,
-      property: { formatter: '0' },
-    });
-    const viewsFieldId = viewsResult?.field?.field_id;
-    await this._sleep(300);
-
+    const viewsFieldId = fieldIdMap['目前播放量'];
     const targetViewsFieldId = fieldIdMap['目标播放量'];
     const publishedFieldId = fieldIdMap['已发布'];
     if (!viewsFieldId || !targetViewsFieldId || !publishedFieldId) {
