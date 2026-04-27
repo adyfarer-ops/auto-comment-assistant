@@ -59,4 +59,26 @@ router.get('/:recordId/accounts', async (req, res, next) => {
   }
 });
 
+router.post('/:tableId/create-tables', async (req, res, next) => {
+  try {
+    const { tableId } = req.params;
+    if (!tableId) {
+      return res.status(400).json({ code: 400, message: 'tableId is required' });
+    }
+
+    const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    res.status(202).json({ code: 0, message: 'Detail tables creation started', traceId });
+
+    projectService.createProjectDetailTables(tableId, { traceId, triggerSource: req.body?.triggerSource || 'API' })
+      .then((result) => {
+        logger.info('createProjectDetailTables background completed', { tableId, traceId, summary: { created: result.created, skipped: result.skipped, errors: result.errors } });
+      })
+      .catch((err) => {
+        logger.error('createProjectDetailTables background failed', { tableId, traceId, error: err.message });
+      });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

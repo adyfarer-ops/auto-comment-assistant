@@ -1,4 +1,5 @@
 const feishuBitable = require('./feishu-bitable');
+const platformResolver = require('./platform-resolver');
 const logger = require('../utils/logger');
 
 class ProjectService {
@@ -78,6 +79,98 @@ class ProjectService {
       logger.error('Failed to create detail table', { tableName, error: error.message });
       throw error;
     }
+  }
+
+  async createProjectDetailTables(tableId, options = {}) {
+    const traceId = options.traceId || `tr_${Date.now()}`;
+    logger.info('createProjectDetailTables start', { tableId, traceId });
+
+    const tablesResult = await feishuBitable.getAppTables(this.projectMgmtAppToken);
+    const allTables = tablesResult?.items || [];
+    const masterTable = allTables.find(t => t.table_id === tableId);
+    if (!masterTable) {
+      throw new Error(`未找到总表: ${tableId}`);
+    }
+
+    const masterName = masterTable.name || '';
+    const match = masterName.match(/^(.+)-项目规划$/);
+    if (!match) {
+      throw new Error(`表名不符合总表命名规则: ${masterName}`);
+    }
+    const projectName = match[1];
+    const detailPrefix = `${projectName.split('-')[0]}-`;
+    const existingDetailNames = new Set(
+      allTables
+        .filter(t => (t.name || '').startsWith(detailPrefix) && (t.name || '').endsWith('-作品详情'))
+        .map(t => t.name)
+    );
+
+    const records = await feishuBitable.searchRecords(this.projectMgmtAppToken, tableId);
+    logger.info('Loaded account records', { tableId, count: records.length, traceId });
+
+    const result = {
+      projectName,
+      tableId,
+      totalAccounts: records.length,
+      created: 0,
+      skipped: 0,
+      errors: 0,
+      details: [],
+    };
+
+    for (const record of records) {
+      const fields = record.fields || {};
+      const accountName = this._extractFieldText(fields['账号名称']);
+      const homeLink = this._extractFieldText(fields['主页链接']);
+      if (!accountName) {
+        result.skipped++;
+        result.details.push({ recordId: record.record_id, status: 'skipped', reason: 'no account name' });
+        continue;
+      }
+
+      const platform = (homeLink && platformResolver.detectPlatform(homeLink))
+        || platformResolver.detectPlatformFromName(accountName);
+      if (!platform) {
+        result.errors++;
+        result.details.push({ recordId: record.record_id, accountName, status: 'error', reason: 'platform unresolved' });
+        logger.warn('Platform unresolved for account', { accountName, homeLink, traceId });
+        continue;
+      }
+
+      const expectedName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platform.code}-作品详情`;
+      if (existingDetailNames.has(expectedName)) {
+        result.skipped++;
+        result.details.push({ recordId: record.record_id, accountName, status: 'skipped', reason: 'table exists', tableName: expectedName });
+        continue;
+      }
+
+      try {
+        const newTableId = await this.createDetailTable(projectName, accountName, platform.code);
+        existingDetailNames.add(expectedName);
+        result.created++;
+        result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'created', tableId: newTableId, tableName: expectedName });
+        await this._sleep(300);
+      } catch (err) {
+        result.errors++;
+        result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'error', reason: err.message });
+        logger.error('Failed to create detail table for account', { accountName, error: err.message, traceId });
+      }
+    }
+
+    logger.info('createProjectDetailTables completed', { tableId, ...result, traceId });
+    return result;
+  }
+
+  _extractFieldText(value) {
+    if (!value) return '';
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+      return value.map(v => (typeof v === 'string' ? v : (v?.text || v?.name || ''))).join('').trim();
+    }
+    if (typeof value === 'object') {
+      return (value.text || value.name || '').toString().trim();
+    }
+    return String(value).trim();
   }
 
   async createProjectTable(recordId, options = {}) {
