@@ -1,0 +1,111 @@
+const axios = require('axios');
+const config = require('../../config');
+const logger = require('../utils/logger');
+const { createProxyAgent } = require('../utils/proxy');
+
+class TikHubApiService {
+  constructor() {
+    this.client = axios.create({
+      baseURL: config.tikhub.baseUrl,
+      headers: {
+        Authorization: `Bearer ${config.tikhub.apiKey}`,
+      },
+      timeout: 30000,
+    });
+
+    const agent = createProxyAgent();
+    if (agent) {
+      this.client.defaults.httpsAgent = agent;
+    }
+  }
+
+  async request(method, path, params = null, data = null) {
+    try {
+      const response = await this.client.request({ method, url: path, params, data });
+      return response.data;
+    } catch (error) {
+      logger.error('TikHub API request failed', { method, path, error: error.message });
+      throw error;
+    }
+  }
+
+  // TikTok
+  async getTikTokUserInfo(username) {
+    return this.request('GET', '/api/v1/tiktok/web/fetch_user_profile', { unique_id: username });
+  }
+
+  async getTikTokUserVideos(username, cursor = 0) {
+    return this.request('GET', '/api/v1/tiktok/web/fetch_user_post_videos', {
+      unique_id: username,
+      cursor,
+      count: 35,
+    });
+  }
+
+  // Instagram
+  async getInstagramUserInfo(username) {
+    return this.request('GET', '/api/v1/instagram/web/fetch_user_profile_by_username', { username });
+  }
+
+  async getInstagramUserPosts(username, end_cursor = '') {
+    return this.request('GET', '/api/v1/instagram/web/fetch_user_posts_by_username', {
+      username,
+      end_cursor,
+      count: 12,
+    });
+  }
+
+  // X (Twitter)
+  async getXUserInfo(username) {
+    return this.request('GET', '/api/v1/twitter/web/fetch_user_profile', { screen_name: username });
+  }
+
+  async getXUserTweets(username, cursor = '') {
+    return this.request('GET', '/api/v1/twitter/web/fetch_user_tweets', {
+      screen_name: username,
+      cursor,
+      count: 20,
+    });
+  }
+
+  // YouTube (via TikHub)
+  async getYouTubeChannelInfo(handle) {
+    return this.request('GET', '/api/v1/youtube/web/fetch_channel_info', { handle });
+  }
+
+  async getYouTubeChannelVideos(channelId, pageToken = '') {
+    return this.request('GET', '/api/v1/youtube/web/fetch_channel_videos', {
+      channel_id: channelId,
+      page_token: pageToken,
+      max_results: 50,
+    });
+  }
+
+  // Reddit
+  async getRedditUserInfo(username) {
+    return this.request('GET', '/api/v1/reddit/web/fetch_user_profile', { username });
+  }
+
+  async getRedditUserPosts(username, after = '') {
+    return this.request('GET', '/api/v1/reddit/web/fetch_user_posts', {
+      username,
+      after,
+      limit: 25,
+    });
+  }
+
+  // Facebook
+  async getFacebookUserInfo(username) {
+    return this.request('GET', '/api/v1/facebook/web/fetch_user_profile', { username });
+  }
+
+  async getFacebookUserPosts(username, cursor = '') {
+    return this.request('GET', '/api/v1/facebook/web/fetch_user_posts', {
+      username,
+      cursor,
+      count: 25,
+    });
+  }
+}
+
+module.exports = new TikHubApiService();

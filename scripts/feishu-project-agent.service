@@ -1,0 +1,15 @@
+[Unit]
+Description=Feishu Project Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/zhaomiao/workspace-project-planning
+ExecStart=/usr/bin/node src/app.js
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
