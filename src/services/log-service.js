@@ -23,9 +23,20 @@ class LogService {
 
   async createLog(fields) {
     try {
-      await feishuBitable.createRecord(this.projectMgmtAppToken, this.logTableId, fields);
+      const result = await feishuBitable.createRecord(this.projectMgmtAppToken, this.logTableId, fields);
+      return result?.record?.record_id || null;
     } catch (error) {
       logger.error('Failed to create log', { error: error.message, fields });
+      return null;
+    }
+  }
+
+  async updateLog(recordId, fields) {
+    if (!recordId) return;
+    try {
+      await feishuBitable.updateRecord(this.projectMgmtAppToken, this.logTableId, recordId, fields);
+    } catch (error) {
+      logger.error('Failed to update log', { error: error.message, recordId, fields });
     }
   }
 
@@ -47,7 +58,7 @@ class LogService {
   }
 
   async logSyncEnd(projectName, status, options = {}) {
-    const { accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用', errorMessage = '', stats = {} } = options;
+    const { logRecordId, accountName, masterTableId, detailTableId, accountRecordId, platformCode, traceId, triggerSource = 'API调用', errorMessage = '', stats = {} } = options;
     const fields = {
       '项目名称': projectName,
       '账号名称': accountName || '',
@@ -71,6 +82,14 @@ class LogService {
     if (stats.updated !== undefined) fields['更新数'] = stats.updated;
     if (stats.skipped !== undefined) fields['跳过数'] = stats.skipped;
 
+    const { startTime } = options;
+    if (startTime) {
+      fields['耗时'] = Date.now() - startTime;
+    }
+
+    if (logRecordId) {
+      return this.updateLog(logRecordId, fields);
+    }
     return this.createLog(fields);
   }
 

@@ -74,21 +74,45 @@ class ProjectService {
             field_name: '序号',
             type: 1005,
             property: {
-              options: [
-                { type: 'custom', value: 'NO.' },
-                { type: 'autoNumber', value: '3' },
-              ],
+              auto_serial: {
+                type: 'custom',
+                reformat_existing_records: true,
+                options: [
+                  { type: 'fixed_text', value: 'NO.' },
+                  { type: 'system_number', value: '3' },
+                ],
+              },
             },
           });
           logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
         } catch (err) {
-          logger.warn('Failed to convert default field to auto_number, falling back to rename', { tableId: newTableId, error: err.message });
+          logger.warn('Failed to convert default field to auto_number', { tableId: newTableId, error: err.message });
           try {
             await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
-              field_name: '序号',
+              field_name: '标题',
             });
+            await this._sleep(300);
           } catch (renameErr) {
-            logger.warn('Failed to rename default field to 序号', { tableId: newTableId, error: renameErr.message });
+            logger.warn('Failed to rename default field to 标题', { tableId: newTableId, error: renameErr.message });
+          }
+          try {
+            await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+              field_name: '序号',
+              type: 1005,
+              property: {
+                auto_serial: {
+                  type: 'custom',
+                  reformat_existing_records: true,
+                  options: [
+                    { type: 'fixed_text', value: 'NO.' },
+                    { type: 'system_number', value: '3' },
+                  ],
+                },
+              },
+            });
+            logger.info('Created new auto_number field 序号', { tableId: newTableId });
+          } catch (createErr) {
+            logger.warn('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
           }
         }
         await this._sleep(300);
@@ -252,21 +276,45 @@ class ProjectService {
             field_name: '序号',
             type: 1005,
             property: {
-              options: [
-                { type: 'custom', value: 'NO.' },
-                { type: 'autoNumber', value: '3' },
-              ],
+              auto_serial: {
+                type: 'custom',
+                reformat_existing_records: true,
+                options: [
+                  { type: 'fixed_text', value: 'NO.' },
+                  { type: 'system_number', value: '3' },
+                ],
+              },
             },
           });
           logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
         } catch (err) {
-          logger.warn('Failed to convert default field to auto_number, falling back to rename', { tableId: newTableId, error: err.message });
+          logger.warn('Failed to convert default field to auto_number', { tableId: newTableId, error: err.message });
           try {
             await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
-              field_name: '序号',
+              field_name: '标题',
             });
+            await this._sleep(300);
           } catch (renameErr) {
-            logger.warn('Failed to rename default field to 序号', { tableId: newTableId, error: renameErr.message });
+            logger.warn('Failed to rename default field to 标题', { tableId: newTableId, error: renameErr.message });
+          }
+          try {
+            await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+              field_name: '序号',
+              type: 1005,
+              property: {
+                auto_serial: {
+                  type: 'custom',
+                  reformat_existing_records: true,
+                  options: [
+                    { type: 'fixed_text', value: 'NO.' },
+                    { type: 'system_number', value: '3' },
+                  ],
+                },
+              },
+            });
+            logger.info('Created new auto_number field 序号', { tableId: newTableId });
+          } catch (createErr) {
+            logger.warn('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
           }
         }
         await this._sleep(300);
@@ -374,7 +422,7 @@ class ProjectService {
 
       logger.info('createProjectTable completed', { newTableId, tableName, traceId });
 
-      await logService.createLog({
+      const logFields = {
         '项目名称': projectName,
         '操作类型': '创建总表',
         '状态': '成功',
@@ -382,11 +430,19 @@ class ProjectService {
         '总表ID': newTableId,
         'traceId': traceId,
         '触发来源': options.triggerSource || 'API',
-      });
+      };
+      if (options.logStartTime) {
+        logFields['耗时'] = Date.now() - options.logStartTime;
+      }
+      if (options.logRecordId) {
+        await logService.updateLog(options.logRecordId, logFields);
+      } else {
+        await logService.createLog(logFields);
+      }
 
       return { success: true, tableId: newTableId, tableName, projectName, startDate, endDate };
     } catch (error) {
-      await logService.createLog({
+      const logFields = {
         '项目名称': projectName || '',
         '操作类型': '创建总表',
         '状态': '失败',
@@ -394,7 +450,15 @@ class ProjectService {
         '错误信息': error.message,
         'traceId': traceId,
         '触发来源': options.triggerSource || 'API',
-      });
+      };
+      if (options.logStartTime) {
+        logFields['耗时'] = Date.now() - options.logStartTime;
+      }
+      if (options.logRecordId) {
+        await logService.updateLog(options.logRecordId, logFields);
+      } else {
+        await logService.createLog(logFields);
+      }
       throw error;
     }
   }

@@ -43,11 +43,12 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
 
       case 'weekly': {
         const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        await logService.createLog({
+        const weeklyStartTime = Date.now();
+        const weeklyLogId = await logService.createLog({
           '项目名称': projectName,
           '操作类型': '生成周报',
           '状态': '进行中',
-          '开始时间': Date.now(),
+          '开始时间': weeklyStartTime,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',
         });
@@ -56,21 +57,23 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
         (async () => {
           try {
             await weeklyReportService.generateWeeklyReport(project);
-            await logService.createLog({
+            await logService.updateLog(weeklyLogId, {
               '项目名称': projectName,
               '操作类型': '生成周报',
               '状态': '成功',
               '结束时间': Date.now(),
+              '耗时': Date.now() - weeklyStartTime,
               'traceId': traceId,
               '触发来源': 'Webhook按钮',
             });
           } catch (err) {
             logger.error('Webhook weekly report failed', { error: err.message, traceId });
-            await logService.createLog({
+            await logService.updateLog(weeklyLogId, {
               '项目名称': projectName,
               '操作类型': '生成周报',
               '状态': '失败',
               '结束时间': Date.now(),
+              '耗时': Date.now() - weeklyStartTime,
               '错误信息': err.message,
               'traceId': traceId,
               '触发来源': 'Webhook按钮',
@@ -82,11 +85,12 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
 
       case 'review': {
         const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        await logService.createLog({
+        const reviewStartTime = Date.now();
+        const reviewLogId = await logService.createLog({
           '项目名称': projectName,
           '操作类型': '生成复盘报告',
           '状态': '进行中',
-          '开始时间': Date.now(),
+          '开始时间': reviewStartTime,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',
         });
@@ -95,21 +99,23 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
         (async () => {
           try {
             await reportService.generateReviewReport(project);
-            await logService.createLog({
+            await logService.updateLog(reviewLogId, {
               '项目名称': projectName,
               '操作类型': '生成复盘报告',
               '状态': '成功',
               '结束时间': Date.now(),
+              '耗时': Date.now() - reviewStartTime,
               'traceId': traceId,
               '触发来源': 'Webhook按钮',
             });
           } catch (err) {
             logger.error('Webhook review report failed', { error: err.message, traceId });
-            await logService.createLog({
+            await logService.updateLog(reviewLogId, {
               '项目名称': projectName,
               '操作类型': '生成复盘报告',
               '状态': '失败',
               '结束时间': Date.now(),
+              '耗时': Date.now() - reviewStartTime,
               '错误信息': err.message,
               'traceId': traceId,
               '触发来源': 'Webhook按钮',
@@ -161,11 +167,12 @@ router.post('/weekly/:recordId', verifyWebhookToken, async (req, res, next) => {
 
     const projectName = project.fields['项目名称'];
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await logService.createLog({
+    const weeklyStartTime = Date.now();
+    const weeklyLogId = await logService.createLog({
       '项目名称': projectName,
       '操作类型': '生成周报',
       '状态': '进行中',
-      '开始时间': Date.now(),
+      '开始时间': weeklyStartTime,
       'traceId': traceId,
       '触发来源': 'Webhook按钮',
     });
@@ -174,21 +181,23 @@ router.post('/weekly/:recordId', verifyWebhookToken, async (req, res, next) => {
     (async () => {
       try {
         await weeklyReportService.generateWeeklyReport(project);
-        await logService.createLog({
+        await logService.updateLog(weeklyLogId, {
           '项目名称': projectName,
           '操作类型': '生成周报',
           '状态': '成功',
           '结束时间': Date.now(),
+          '耗时': Date.now() - weeklyStartTime,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',
         });
       } catch (err) {
         logger.error('Webhook weekly report failed', { error: err.message, traceId });
-        await logService.createLog({
+        await logService.updateLog(weeklyLogId, {
           '项目名称': projectName,
           '操作类型': '生成周报',
           '状态': '失败',
           '结束时间': Date.now(),
+          '耗时': Date.now() - weeklyStartTime,
           '错误信息': err.message,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',
@@ -209,11 +218,12 @@ router.post('/review/:recordId', verifyWebhookToken, async (req, res, next) => {
 
     const projectName = project.fields['项目名称'];
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await logService.createLog({
+    const reviewStartTime = Date.now();
+    const reviewLogId = await logService.createLog({
       '项目名称': projectName,
       '操作类型': '生成复盘报告',
       '状态': '进行中',
-      '开始时间': Date.now(),
+      '开始时间': reviewStartTime,
       'traceId': traceId,
       '触发来源': 'Webhook按钮',
     });
@@ -222,21 +232,23 @@ router.post('/review/:recordId', verifyWebhookToken, async (req, res, next) => {
     (async () => {
       try {
         await reportService.generateReviewReport(project);
-        await logService.createLog({
+        await logService.updateLog(reviewLogId, {
           '项目名称': projectName,
           '操作类型': '生成复盘报告',
           '状态': '成功',
           '结束时间': Date.now(),
+          '耗时': Date.now() - reviewStartTime,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',
         });
       } catch (err) {
         logger.error('Webhook review report failed', { error: err.message, traceId });
-        await logService.createLog({
+        await logService.updateLog(reviewLogId, {
           '项目名称': projectName,
           '操作类型': '生成复盘报告',
           '状态': '失败',
           '结束时间': Date.now(),
+          '耗时': Date.now() - reviewStartTime,
           '错误信息': err.message,
           'traceId': traceId,
           '触发来源': 'Webhook按钮',

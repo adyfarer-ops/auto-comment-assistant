@@ -43,7 +43,11 @@ class SyncService {
     const triggerSource = options.triggerSource || 'API调用';
 
     logger.info('Starting project sync', { projectName, planTableId, traceId });
-    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    const startTime = Date.now();
+    let projectLogId = options.logRecordId;
+    if (!projectLogId) {
+      projectLogId = await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    }
 
     return syncQueue.enqueue(`project:${projectName}`, async () => {
       try {
@@ -68,6 +72,8 @@ class SyncService {
           masterTableId: planTableId,
           traceId,
           triggerSource,
+          logRecordId: projectLogId,
+          startTime,
           stats: { fetched: totalWorks },
         });
 
@@ -75,7 +81,7 @@ class SyncService {
         return { accountsCount: accounts.length, totalWorks, totalErrors };
       } catch (error) {
         logger.error('Project sync failed', { projectName, error: error.message, traceId });
-        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime });
         await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
         throw error;
       }
@@ -125,7 +131,8 @@ class SyncService {
     const triggerSource = options.triggerSource || 'API调用';
 
     logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
-    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    const projectStartTime = Date.now();
+    const projectLogId = await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
     return syncQueue.enqueue(`project:${projectName}:incremental`, async () => {
       const parsedStart = this._parseDate(startDate);
@@ -150,7 +157,8 @@ class SyncService {
           const username = platformResolver.extractUsername(homeLink, platform.code);
           if (!username) continue;
 
-          await logService.logSyncStart(projectName, {
+          const accountStartTime = Date.now();
+          const accountLogId = await logService.logSyncStart(projectName, {
             accountName,
             masterTableId: planTableId,
             accountRecordId: account.record_id,
@@ -194,6 +202,8 @@ class SyncService {
                 platformCode: platform.code,
                 traceId,
                 triggerSource,
+                logRecordId: accountLogId,
+                startTime: accountStartTime,
                 stats: {
                   original: works.length,
                   filtered: filteredWorks.length,
@@ -212,6 +222,8 @@ class SyncService {
                 platformCode: platform.code,
                 traceId,
                 triggerSource,
+                logRecordId: accountLogId,
+                startTime: accountStartTime,
               });
             }
           } catch (error) {
@@ -224,6 +236,8 @@ class SyncService {
               platformCode: platform.code,
               traceId,
               triggerSource,
+              logRecordId: accountLogId,
+              startTime: accountStartTime,
             });
           }
         }
@@ -235,6 +249,8 @@ class SyncService {
           masterTableId: planTableId,
           traceId,
           triggerSource,
+          logRecordId: projectLogId,
+          startTime: projectStartTime,
           stats: { fetched: totalWorks },
         });
 
@@ -242,7 +258,7 @@ class SyncService {
         return { totalWorks, totalErrors };
       } catch (error) {
         logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
-        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime });
         await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
         throw error;
       }
@@ -279,7 +295,8 @@ class SyncService {
     }
 
     logger.info('Syncing account', { accountName, platform: platform.code, username, traceId });
-    await logService.logSyncStart(projectName, {
+    const accountStartTime = Date.now();
+    const accountLogId = await logService.logSyncStart(projectName, {
       accountName,
       masterTableId: planTableId,
       accountRecordId: account.record_id,
@@ -306,6 +323,8 @@ class SyncService {
         platformCode: platform.code,
         traceId,
         triggerSource,
+        logRecordId: accountLogId,
+        startTime: accountStartTime,
         stats: { fetched: works.length },
       });
 
@@ -319,6 +338,8 @@ class SyncService {
         platformCode: platform.code,
         traceId,
         triggerSource,
+        logRecordId: accountLogId,
+        startTime: accountStartTime,
       });
       throw error;
     }
