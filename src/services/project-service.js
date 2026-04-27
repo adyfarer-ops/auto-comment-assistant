@@ -216,9 +216,103 @@ class ProjectService {
       }
       logger.info('Empty plan table created', { newTableId, tableName });
 
-      const fieldIdMap = await this._createBaseFields(newTableId);
-      await this._createFormulaFields(newTableId, fieldIdMap);
+      const fieldIdMap = {};
+
+      // 1-4 基础字段
+      for (const f of [
+        { field_name: '账号名称', type: 1 },
+        { field_name: '主页链接', type: 15 },
+        { field_name: '负责人', type: 1 },
+        { field_name: '制作', type: 1 },
+      ]) {
+        const result = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, f);
+        const fid = result?.field?.field_id;
+        if (fid) fieldIdMap[f.field_name] = fid;
+        await this._sleep(300);
+      }
+
+      // 5 保底条数
+      const minPostsRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '保底条数', type: 2, property: { formatter: '0' },
+      });
+      const minPostsFieldId = minPostsRes?.field?.field_id;
+      if (minPostsFieldId) fieldIdMap['保底条数'] = minPostsFieldId;
+      await this._sleep(300);
+
+      // 6 待发布
+      const pendingRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '待发布', type: 2, property: { formatter: '0' },
+      });
+      const pendingFieldId = pendingRes?.field?.field_id;
+      if (pendingFieldId) fieldIdMap['待发布'] = pendingFieldId;
+      await this._sleep(300);
+
+      // 7 已发布
+      const publishedRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '已发布', type: 2, property: { formatter: '0' },
+      });
+      const publishedFieldId = publishedRes?.field?.field_id;
+      if (publishedFieldId) fieldIdMap['已发布'] = publishedFieldId;
+      await this._sleep(300);
+
+      // 8 发布率（公式）
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '发布率', type: 20, property: {
+          formula_expression: `bitable::$table[${newTableId}].$field[${publishedFieldId}] / bitable::$table[${newTableId}].$field[${minPostsFieldId}]`,
+        },
+      });
+      await this._sleep(300);
+
+      // 9 目标播放量
+      const targetRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '目标播放量', type: 2, property: { formatter: '0' },
+      });
+      const targetFieldId = targetRes?.field?.field_id;
+      if (targetFieldId) fieldIdMap['目标播放量'] = targetFieldId;
+      await this._sleep(300);
+
+      // 10 目前播放量
+      const viewsRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '目前播放量', type: 2, property: { formatter: '0' },
+      });
+      const viewsFieldId = viewsRes?.field?.field_id;
+      if (viewsFieldId) fieldIdMap['目前播放量'] = viewsFieldId;
+      await this._sleep(300);
+
+      // 11 总完成播放（公式）
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '总完成播放', type: 20, property: {
+          formula_expression: `SUM(bitable::$table[${newTableId}].$column[${viewsFieldId}])`,
+        },
+      });
+      await this._sleep(300);
+
+      // 12 播放量完成率（公式）
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '播放量完成率', type: 20, property: {
+          formula_expression: `bitable::$table[${newTableId}].$field[${viewsFieldId}] / bitable::$table[${newTableId}].$field[${targetFieldId}]`,
+        },
+      });
+      await this._sleep(300);
+
+      // 13 粉丝总量
+      const fansRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '粉丝总量', type: 2, property: { formatter: '0' },
+      });
+      if (fansRes?.field?.field_id) fieldIdMap['粉丝总量'] = fansRes.field.field_id;
+      await this._sleep(300);
+
+      // 14 稿均（公式）
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
+        field_name: '稿均', type: 20, property: {
+          formula_expression: `bitable::$table[${newTableId}].$field[${viewsFieldId}] / bitable::$table[${newTableId}].$field[${publishedFieldId}]`,
+        },
+      });
+      await this._sleep(300);
+
+      // 15+ 日期字段
       await this._createDateFields(newTableId, startDate, endDate);
+
       await this._writeBackTableId(managementTableId, recordId, newTableId);
 
       logger.info('createProjectTable completed', { newTableId, tableName, traceId });
