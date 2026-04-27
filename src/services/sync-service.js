@@ -277,17 +277,46 @@ class SyncService {
   }
 
   async updateProjectStats(planTableId, projectRecord) {
-    // 获取所有账号的最新数据
     const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
     const totalPlayCount = accounts.reduce((sum, a) => sum + (parseInt(a.fields['目前播放量']) || 0), 0);
     const totalPublished = accounts.reduce((sum, a) => sum + (parseInt(a.fields['已发布']) || 0), 0);
 
+    const versionProgress = this.calculateVersionProgress(projectRecord.fields);
+
+    const updateFields = {
+      '更新日期': Date.now(),
+    };
+
+    if (versionProgress !== null) {
+      updateFields['版本进度'] = String(versionProgress);
+    }
+
+    await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, updateFields);
+
     logger.info('Project stats updated', {
       projectName: projectRecord.fields['项目名称'],
       totalPlayCount,
-      totalPublished
+      totalPublished,
+      versionProgress,
     });
+  }
+
+  calculateVersionProgress(fields) {
+    const start = fields['版本开始日期'] ? new Date(fields['版本开始日期']) : null;
+    const end = fields['版本结束日期'] ? new Date(fields['版本结束日期']) : null;
+
+    if (!start || !end) return null;
+
+    const now = Date.now();
+    const startTime = start.getTime();
+    const endTime = end.getTime();
+
+    if (now <= startTime) return 0;
+    if (now >= endTime) return 1;
+
+    const progress = (now - startTime) / (endTime - startTime);
+    return progress.toFixed(6);
   }
 }
 
