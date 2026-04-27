@@ -57,7 +57,15 @@ class FeishuBitableService {
     return this.request('GET', `/apps/${appToken}/tables/${tableId}/fields`);
   }
 
+  async createField(appToken, tableId, fieldData) {
+    return this.request('POST', `/apps/${appToken}/tables/${tableId}/fields`, fieldData);
+  }
+
   // === Records ===
+  async getRecord(appToken, tableId, recordId) {
+    return this.request('GET', `/apps/${appToken}/tables/${tableId}/records/${recordId}`);
+  }
+
   async listRecords(appToken, tableId, options = {}) {
     const params = new URLSearchParams();
     if (options.filter) params.append('filter', options.filter);
