@@ -63,9 +63,8 @@ class ProjectService {
       if (!newTableId) {
         throw new Error('创建作品详情表失败，未返回 table_id');
       }
-      logger.info('Empty detail table created', { tableName, tableId: newTableId });
-
       // 将默认多行文本字段修改为序号（自动编号）
+      let hasXuhaoField = false;
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
       const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
       if (defaultField?.field_id) {
@@ -84,6 +83,7 @@ class ProjectService {
               },
             },
           });
+          hasXuhaoField = true;
           logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
         } catch (err) {
           logger.warn('Failed to convert default field to auto_number', { tableId: newTableId, error: err.message });
@@ -110,12 +110,18 @@ class ProjectService {
                 },
               },
             });
+            hasXuhaoField = true;
             logger.info('Created new auto_number field 序号', { tableId: newTableId });
           } catch (createErr) {
-            logger.warn('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
+            logger.error('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
           }
         }
         await this._sleep(300);
+      }
+      if (hasXuhaoField) {
+        logger.info('Empty detail table created', { tableName, tableId: newTableId });
+      } else {
+        logger.error('Detail table created but 序号 field setup failed', { tableName, tableId: newTableId });
       }
 
       const detailFields = [
@@ -304,6 +310,7 @@ class ProjectService {
       }
 
       // 将默认多行文本字段修改为序号（自动编号）
+      let hasXuhaoField = false;
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
       const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
       if (defaultField?.field_id) {
@@ -322,6 +329,7 @@ class ProjectService {
               },
             },
           });
+          hasXuhaoField = true;
           logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
         } catch (err) {
           logger.warn('Failed to convert default field to auto_number', { tableId: newTableId, error: err.message });
@@ -348,14 +356,19 @@ class ProjectService {
                 },
               },
             });
+            hasXuhaoField = true;
             logger.info('Created new auto_number field 序号', { tableId: newTableId });
           } catch (createErr) {
-            logger.warn('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
+            logger.error('Failed to create auto_number field 序号', { tableId: newTableId, error: createErr.message });
           }
         }
         await this._sleep(300);
       }
-      logger.info('Plan table created with 序号 field', { newTableId, tableName });
+      if (hasXuhaoField) {
+        logger.info('Plan table created with 序号 field', { newTableId, tableName });
+      } else {
+        logger.error('Plan table created but 序号 field setup failed', { newTableId, tableName });
+      }
 
       const fieldIdMap = {};
 
