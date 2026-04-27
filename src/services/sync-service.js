@@ -1,3 +1,4 @@
+const config = require('../../config');
 const feishuBitable = require('./feishu-bitable');
 const tikhubApi = require('./tikhub-api');
 const youtubeApi = require('./youtube-api');
@@ -15,6 +16,10 @@ class SyncService {
 
   setProjectMgmtAppToken(token) {
     this.projectMgmtAppToken = token;
+  }
+
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   _formatDateTime(date) {
@@ -512,6 +517,9 @@ class SyncService {
 
     if (toCreate.length > 0) {
       await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, toCreate);
+    }
+    if (toCreate.length > 0 && toUpdate.length > 0) {
+      await this._sleep(config.sync?.batchInterval || 500);
     }
     if (toUpdate.length > 0) {
       await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, toUpdate);

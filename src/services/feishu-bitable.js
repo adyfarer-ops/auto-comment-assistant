@@ -15,6 +15,14 @@ class FeishuBitableService {
     return false;
   }
 
+  _chunkArray(array, size) {
+    const chunks = [];
+    for (let i = 0; i < array.length; i += size) {
+      chunks.push(array.slice(i, i + size));
+    }
+    return chunks;
+  }
+
   _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -117,9 +125,30 @@ class FeishuBitableService {
   }
 
   async batchCreateRecords(appToken, tableId, records) {
-    return this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_create`, {
-      records: records.map(fields => ({ fields })),
-    });
+    if (records.length <= 500) {
+      return this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_create`, {
+        records: records.map(fields => ({ fields })),
+      });
+    }
+
+    const chunks = this._chunkArray(records, 500);
+    const results = [];
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const chunkResult = await this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_create`, {
+          records: chunks[i].map(fields => ({ fields })),
+        });
+        if (chunkResult) {
+          results.push(chunkResult);
+        }
+      } catch (error) {
+        logger.error('Feishu Bitable batchCreateRecords chunk failed', { appToken, tableId, chunkIndex: i, error: error.message });
+      }
+      if (i < chunks.length - 1) {
+        await this._sleep(config.sync?.batchInterval || 500);
+      }
+    }
+    return results;
   }
 
   async updateRecord(appToken, tableId, recordId, fields) {
@@ -129,9 +158,30 @@ class FeishuBitableService {
   }
 
   async batchUpdateRecords(appToken, tableId, records) {
-    return this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_update`, {
-      records: records.map(r => ({ record_id: r.recordId, fields: r.fields })),
-    });
+    if (records.length <= 500) {
+      return this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_update`, {
+        records: records.map(r => ({ record_id: r.recordId, fields: r.fields })),
+      });
+    }
+
+    const chunks = this._chunkArray(records, 500);
+    const results = [];
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const chunkResult = await this.request('POST', `/apps/${appToken}/tables/${tableId}/records/batch_update`, {
+          records: chunks[i].map(r => ({ record_id: r.recordId, fields: r.fields })),
+        });
+        if (chunkResult) {
+          results.push(chunkResult);
+        }
+      } catch (error) {
+        logger.error('Feishu Bitable batchUpdateRecords chunk failed', { appToken, tableId, chunkIndex: i, error: error.message });
+      }
+      if (i < chunks.length - 1) {
+        await this._sleep(config.sync?.batchInterval || 500);
+      }
+    }
+    return results;
   }
 
   async deleteRecord(appToken, tableId, recordId) {

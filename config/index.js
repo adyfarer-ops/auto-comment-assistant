@@ -55,4 +55,22 @@ module.exports = {
   notify: {
     chatId: process.env.NOTIFY_CHAT_ID,
   },
+
+  sync: {
+    maxRetries: 3,
+    retryDelay: 1000,
+    batchInterval: 500,
+    queueConcurrency: 1,
+  },
 };
+
+function validate() {
+  const missing = [];
+  if (!module.exports.feishu.appId) missing.push('FEISHU_APP_ID');
+  if (!module.exports.feishu.appSecret) missing.push('FEISHU_APP_SECRET');
+  if (!module.exports.tikhub.apiKey) missing.push('TIKHUB_API_KEY');
+  if (missing.length > 0) {
+    console.warn(`[CONFIG WARN] Missing env vars: ${missing.join(', ')}. Related features may be disabled.`);
+  }
+}
+validate();
