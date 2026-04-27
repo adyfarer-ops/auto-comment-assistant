@@ -1,4 +1,5 @@
 const axios = require('axios');
+const config = require('../../config');
 const feishuAuth = require('./feishu-auth');
 const logger = require('../utils/logger');
 
@@ -7,34 +8,65 @@ class FeishuBitableService {
     this.baseUrl = 'https://open.feishu.cn/open-apis/bitable/v1';
   }
 
+  _shouldRetry(error) {
+    if (!error.response) return true; // 网络超时/断开
+    const status = error.response.status;
+    if (status >= 500 || status === 429) return true;
+    return false;
+  }
+
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async request(method, path, data = null, options = {}) {
-    const token = await feishuAuth.getAppToken();
-    const url = `${this.baseUrl}${path}`;
+    const maxRetries = config.sync?.maxRetries || 3;
+    const retryDelay = config.sync?.retryDelay || 1000;
+    let lastError;
 
-    const config = {
-      method,
-      url,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      ...options,
-    };
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const token = await feishuAuth.getAppToken();
+        const url = `${this.baseUrl}${path}`;
 
-    if (data) {
-      config.data = data;
-    }
+        const axiosConfig = {
+          method,
+          url,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          ...options,
+        };
 
-    try {
-      const response = await axios(config);
-      if (response.data.code !== 0) {
-        throw new Error(`Feishu API error: ${response.data.msg} (code: ${response.data.code})`);
+        if (data) {
+          axiosConfig.data = data;
+        }
+
+        const response = await axios(axiosConfig);
+        if (response.data.code !== 0) {
+          const isRateLimit = response.data.code === 99991400 || response.data.code === 99991401;
+          if (isRateLimit && attempt < maxRetries) {
+            logger.warn('Feishu Bitable rate limited, retrying', { method, path, attempt: attempt + 1, code: response.data.code });
+            await this._sleep(retryDelay * (attempt + 1));
+            continue;
+          }
+          throw new Error(`Feishu API error: ${response.data.msg} (code: ${response.data.code})`);
+        }
+        return response.data.data;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries && this._shouldRetry(error)) {
+          logger.warn('Feishu Bitable request failed, retrying', { method, path, attempt: attempt + 1, error: error.message });
+          await this._sleep(retryDelay * (attempt + 1));
+          continue;
+        }
+        logger.error('Feishu Bitable request failed', { method, path, error: error.message });
+        throw error;
       }
-      return response.data.data;
-    } catch (error) {
-      logger.error('Feishu Bitable request failed', { method, path, error: error.message });
-      throw error;
     }
+
+    throw lastError;
   }
 
   // === App (Base) ===

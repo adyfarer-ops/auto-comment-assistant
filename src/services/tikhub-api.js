@@ -19,14 +19,39 @@ class TikHubApiService {
     }
   }
 
+  _shouldRetry(error) {
+    if (!error.response) return true; // 网络超时/断开
+    const status = error.response.status;
+    if (status >= 500 || status === 429) return true;
+    return false;
+  }
+
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async request(method, path, params = null, data = null) {
-    try {
-      const response = await this.client.request({ method, url: path, params, data });
-      return response.data;
-    } catch (error) {
-      logger.error('TikHub API request failed', { method, path, error: error.message });
-      throw error;
+    const maxRetries = config.sync?.maxRetries || 3;
+    const retryDelay = config.sync?.retryDelay || 1000;
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await this.client.request({ method, url: path, params, data });
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries && this._shouldRetry(error)) {
+          logger.warn('TikHub API request failed, retrying', { method, path, attempt: attempt + 1, error: error.message });
+          await this._sleep(retryDelay * (attempt + 1));
+          continue;
+        }
+        logger.error('TikHub API request failed', { method, path, error: error.message });
+        throw error;
+      }
     }
+
+    throw lastError;
   }
 
   // TikTok
