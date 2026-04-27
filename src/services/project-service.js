@@ -65,14 +65,34 @@ class ProjectService {
       }
       logger.info('Empty detail table created', { tableName, tableId: newTableId });
 
-      // 将默认多行文本字段替换为序号（自动编号）
+      // 将默认多行文本字段修改为序号（自动编号）
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
       const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
-      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, { field_name: '序号', type: 1005 });
       if (defaultField?.field_id) {
-        await feishuBitable.deleteField(this.projectMgmtAppToken, newTableId, defaultField.field_id);
+        try {
+          await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
+            field_name: '序号',
+            type: 1005,
+            property: {
+              options: [
+                { type: 'custom', value: 'NO.' },
+                { type: 'autoNumber', value: '3' },
+              ],
+            },
+          });
+          logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
+        } catch (err) {
+          logger.warn('Failed to convert default field to auto_number, falling back to rename', { tableId: newTableId, error: err.message });
+          try {
+            await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
+              field_name: '序号',
+            });
+          } catch (renameErr) {
+            logger.warn('Failed to rename default field to 序号', { tableId: newTableId, error: renameErr.message });
+          }
+        }
+        await this._sleep(300);
       }
-      await this._sleep(300);
 
       const detailFields = [
         { field_name: '总表记录ID', type: 1 },
@@ -223,14 +243,34 @@ class ProjectService {
         throw new Error('创建表失败，未返回 table_id');
       }
 
-      // 将默认多行文本字段替换为序号（自动编号）
+      // 将默认多行文本字段修改为序号（自动编号）
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
       const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
-      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, { field_name: '序号', type: 1005 });
       if (defaultField?.field_id) {
-        await feishuBitable.deleteField(this.projectMgmtAppToken, newTableId, defaultField.field_id);
+        try {
+          await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
+            field_name: '序号',
+            type: 1005,
+            property: {
+              options: [
+                { type: 'custom', value: 'NO.' },
+                { type: 'autoNumber', value: '3' },
+              ],
+            },
+          });
+          logger.info('Default field converted to auto_number 序号', { tableId: newTableId, fieldId: defaultField.field_id });
+        } catch (err) {
+          logger.warn('Failed to convert default field to auto_number, falling back to rename', { tableId: newTableId, error: err.message });
+          try {
+            await feishuBitable.updateField(this.projectMgmtAppToken, newTableId, defaultField.field_id, {
+              field_name: '序号',
+            });
+          } catch (renameErr) {
+            logger.warn('Failed to rename default field to 序号', { tableId: newTableId, error: renameErr.message });
+          }
+        }
+        await this._sleep(300);
       }
-      await this._sleep(300);
       logger.info('Plan table created with 序号 field', { newTableId, tableName });
 
       const fieldIdMap = {};
