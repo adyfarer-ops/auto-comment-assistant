@@ -30,7 +30,7 @@ class ReportService {
     const reportContent = this.buildReportContent(fields['项目名称'], template, accounts, versionStart, versionEnd);
 
     // 创建飞书文档
-    const docUrl = await this.createFeishuDoc(fields['项目名称'], reportContent);
+    const docUrl = await this.createFeishuDoc(fields['项目名称'], reportContent, accounts, template);
 
     // 更新项目管理表
     await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, {
@@ -84,14 +84,13 @@ class ReportService {
     return content;
   }
 
-  async createFeishuDoc(projectName, content) {
+  async createFeishuDoc(projectName, content, accounts, template) {
     try {
       const token = await feishuAuth.getAppToken();
 
       // 创建文档
       const createRes = await axios.post('https://open.feishu.cn/open-apis/docx/v1/documents', {
         title: `${projectName} 复盘报告`,
-        folder_token: '',
       }, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -102,7 +101,9 @@ class ReportService {
 
       const documentId = createRes.data.data.document.document_id;
 
-      // TODO: 写入文档内容（需要调用 block API）
+      // 写入文档内容
+      await this.writeDocBlocks(documentId, token, projectName, content, accounts, template);
+
       logger.info('Review report doc created', { documentId });
 
       return `https://vcnsfx7fytb0.feishu.cn/docx/${documentId}`;
@@ -110,6 +111,116 @@ class ReportService {
       logger.error('Failed to create feishu doc', { error: error.message });
       throw error;
     }
+  }
+
+  async writeDocBlocks(documentId, token, projectName, content, accounts, template) {
+    const blocks = [];
+
+    // 标题
+    blocks.push({
+      block_type: 3,
+      heading1: {
+        elements: [{ text_run: { content: `${projectName} 复盘报告` } }],
+      },
+    });
+
+    // 统计周期
+    blocks.push({
+      block_type: 2,
+      text: {
+        elements: [{ text_run: { content: content.split('\n')[1] || '' } }],
+      },
+    });
+
+    // 分隔线
+    blocks.push({ block_type: 9 });
+
+    // 数据概览标题
+    blocks.push({
+      block_type: 4,
+      heading2: {
+        elements: [{ text_run: { content: '数据概览' } }],
+      },
+    });
+
+    const totalPublished = accounts.reduce((sum, a) => sum + (parseInt(a.fields['已发布']) || 0), 0);
+    const totalPlayCount = accounts.reduce((sum, a) => sum + (parseInt(a.fields['目前播放量']) || 0), 0);
+    const avgPlayCount = totalPublished > 0 ? Math.round(totalPlayCount / totalPublished) : 0;
+
+    blocks.push({
+      block_type: 6,
+      bullet: {
+        elements: [{ text_run: { content: `总账号数: ${accounts.length}` } }],
+      },
+    });
+    blocks.push({
+      block_type: 6,
+      bullet: {
+        elements: [{ text_run: { content: `总发布数: ${totalPublished}` } }],
+      },
+    });
+    blocks.push({
+      block_type: 6,
+      bullet: {
+        elements: [{ text_run: { content: `总播放量: ${totalPlayCount.toLocaleString()}` } }],
+      },
+    });
+    blocks.push({
+      block_type: 6,
+      bullet: {
+        elements: [{ text_run: { content: `平均播放量: ${avgPlayCount.toLocaleString()}` } }],
+      },
+    });
+
+    // 账号表现标题
+    blocks.push({
+      block_type: 4,
+      heading2: {
+        elements: [{ text_run: { content: '账号表现' } }],
+      },
+    });
+
+    // 表格
+    const tableRows = [
+      ['账号', '已发布', '播放量', '完成率', '负责人'],
+      ...accounts.map(a => {
+        const af = a.fields;
+        return [
+          af['账号名称'] || '',
+          String(af['已发布'] || 0),
+          String((parseInt(af['目前播放量']) || 0).toLocaleString()),
+          `${(parseFloat(af['发布完成率']) * 100).toFixed(0)}%`,
+          af['负责人'] || '',
+        ];
+      }),
+    ];
+
+    const tableBlock = {
+      block_type: 14,
+      table: {
+        table_width: 5,
+        table_rows: tableRows.length,
+        table_columns: 5,
+        merge_info: [],
+      },
+      children: tableRows.map(row => ({
+        block_type: 15,
+        table_cell: { children: row.map(cell => ({
+          block_type: 2,
+          text: { elements: [{ text_run: { content: cell } }] },
+        })) },
+      })),
+    };
+
+    blocks.push(tableBlock);
+
+    // 批量写入 blocks
+    await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
+      children: blocks,
+      index: 0,
+    }, {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    });
   }
 }
 

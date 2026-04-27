@@ -198,14 +198,24 @@ class SyncService {
   }
 
   async getOrCreateDetailTable(projectName, accountName, platformCode) {
-    // 从项目管理表查找对应的详情表ID
-    // 实际项目中，这里应该有映射关系存储
-    // 简化处理：假设详情表名格式为 {项目名}-{账号名}{平台标识}-作品详情
     const tableName = `${projectName.split('-')[0]}-${accountName.replace(/\s+/g, '')}${platformCode}-作品详情`;
 
-    // 这里简化处理，实际应该从配置或数据库中获取
-    logger.info('Detail table name resolved', { tableName });
-    return null; // TODO: implement table lookup/creation
+    try {
+      // 从 Base 中搜索匹配的表
+      const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
+      const matched = tables.items?.find(t => t.name === tableName);
+
+      if (matched) {
+        logger.info('Detail table found', { tableName, tableId: matched.table_id });
+        return matched.table_id;
+      }
+
+      logger.warn('Detail table not found', { tableName });
+      return null;
+    } catch (error) {
+      logger.error('Failed to lookup detail table', { tableName, error: error.message });
+      return null;
+    }
   }
 
   async syncWorksToDetailTable(detailTableId, works, accountRecordId) {
