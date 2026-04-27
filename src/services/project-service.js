@@ -147,6 +147,7 @@ class ProjectService {
 
   async createProjectDetailTables(tableId, options = {}) {
     const traceId = options.traceId || `tr_${Date.now()}`;
+    const { logRecordId, logStartTime } = options;
     logger.info('createProjectDetailTables start', { tableId, traceId });
 
     const tablesResult = await feishuBitable.getAppTables(this.projectMgmtAppToken);
@@ -182,47 +183,82 @@ class ProjectService {
       details: [],
     };
 
-    for (const record of records) {
-      const fields = record.fields || {};
-      const accountName = this._extractFieldText(fields['账号名称']);
-      const homeLink = this._extractFieldText(fields['主页链接']);
-      if (!accountName) {
-        result.skipped++;
-        result.details.push({ recordId: record.record_id, status: 'skipped', reason: 'no account name' });
-        continue;
+    try {
+      for (const record of records) {
+        const fields = record.fields || {};
+        const accountName = this._extractFieldText(fields['账号名称']);
+        const homeLink = this._extractFieldText(fields['主页链接']);
+        if (!accountName) {
+          result.skipped++;
+          result.details.push({ recordId: record.record_id, status: 'skipped', reason: 'no account name' });
+          continue;
+        }
+
+        const platform = (homeLink && platformResolver.detectPlatform(homeLink))
+          || platformResolver.detectPlatformFromName(accountName);
+        if (!platform) {
+          result.errors++;
+          result.details.push({ recordId: record.record_id, accountName, status: 'error', reason: 'platform unresolved' });
+          logger.warn('Platform unresolved for account', { accountName, homeLink, traceId });
+          continue;
+        }
+
+        const expectedName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platform.code}-作品详情`;
+        if (existingDetailNames.has(expectedName)) {
+          result.skipped++;
+          result.details.push({ recordId: record.record_id, accountName, status: 'skipped', reason: 'table exists', tableName: expectedName });
+          continue;
+        }
+
+        try {
+          const newTableId = await this.createDetailTable(projectName, accountName, platform.code);
+          existingDetailNames.add(expectedName);
+          result.created++;
+          result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'created', tableId: newTableId, tableName: expectedName });
+          await this._sleep(300);
+        } catch (err) {
+          result.errors++;
+          result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'error', reason: err.message });
+          logger.error('Failed to create detail table for account', { accountName, error: err.message, traceId });
+        }
       }
 
-      const platform = (homeLink && platformResolver.detectPlatform(homeLink))
-        || platformResolver.detectPlatformFromName(accountName);
-      if (!platform) {
-        result.errors++;
-        result.details.push({ recordId: record.record_id, accountName, status: 'error', reason: 'platform unresolved' });
-        logger.warn('Platform unresolved for account', { accountName, homeLink, traceId });
-        continue;
+      logger.info('createProjectDetailTables completed', { tableId, ...result, traceId });
+
+      if (logRecordId) {
+        const logFields = {
+          '项目名称': projectName,
+          '操作类型': '创建详情表',
+          '状态': '成功',
+          '结束时间': Date.now(),
+          'traceId': traceId,
+          '触发来源': options.triggerSource || 'API',
+        };
+        if (logStartTime) {
+          logFields['耗时'] = Date.now() - logStartTime;
+        }
+        await logService.updateLog(logRecordId, logFields);
       }
 
-      const expectedName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platform.code}-作品详情`;
-      if (existingDetailNames.has(expectedName)) {
-        result.skipped++;
-        result.details.push({ recordId: record.record_id, accountName, status: 'skipped', reason: 'table exists', tableName: expectedName });
-        continue;
+      return result;
+    } catch (error) {
+      if (logRecordId) {
+        const logFields = {
+          '项目名称': projectName || tableId,
+          '操作类型': '创建详情表',
+          '状态': '失败',
+          '结束时间': Date.now(),
+          '错误信息': error.message,
+          'traceId': traceId,
+          '触发来源': options.triggerSource || 'API',
+        };
+        if (logStartTime) {
+          logFields['耗时'] = Date.now() - logStartTime;
+        }
+        await logService.updateLog(logRecordId, logFields);
       }
-
-      try {
-        const newTableId = await this.createDetailTable(projectName, accountName, platform.code);
-        existingDetailNames.add(expectedName);
-        result.created++;
-        result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'created', tableId: newTableId, tableName: expectedName });
-        await this._sleep(300);
-      } catch (err) {
-        result.errors++;
-        result.details.push({ recordId: record.record_id, accountName, platform: platform.code, status: 'error', reason: err.message });
-        logger.error('Failed to create detail table for account', { accountName, error: err.message, traceId });
-      }
+      throw error;
     }
-
-    logger.info('createProjectDetailTables completed', { tableId, ...result, traceId });
-    return result;
   }
 
   _extractFieldText(value) {

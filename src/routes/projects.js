@@ -77,17 +77,18 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
     }
 
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    await logService.createLog({
+    const logStartTime = Date.now();
+    const logRecordId = await logService.createLog({
       '项目名称': tableId,
       '操作类型': '创建详情表',
       '状态': '进行中',
-      '开始时间': Date.now(),
+      '开始时间': logStartTime,
       'traceId': traceId,
       '触发来源': req.body?.triggerSource || 'API',
     });
     res.status(202).json({ code: 0, message: 'Detail tables creation started', traceId });
 
-    projectService.createProjectDetailTables(tableId, { traceId, triggerSource: req.body?.triggerSource || 'API' })
+    projectService.createProjectDetailTables(tableId, { traceId, triggerSource: req.body?.triggerSource || 'API', logRecordId, logStartTime })
       .then((result) => {
         logger.info('createProjectDetailTables background completed', { tableId, traceId, summary: { created: result.created, skipped: result.skipped, errors: result.errors } });
       })
