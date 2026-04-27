@@ -36,7 +36,7 @@ class NotifyService {
   }
 
   async sendProjectSyncResult(chatId, projectName, result) {
-    const text = `📊 **${projectName}** 同步完成\n\n` +
+    const text = `📊 [同步完成] ${projectName}\n\n` +
       `✅ 账号数: ${result.accountsCount}\n` +
       `⏱️ 时间: ${new Date().toLocaleString('zh-CN')}`;
 
@@ -50,7 +50,7 @@ class NotifyService {
       return;
     }
 
-    let text = `📋 **${projectName}** 周报已生成\n\n` +
+    let text = `📋 [周报已生成] ${projectName}\n\n` +
       `✅ 账号数: ${result.accountsCount}\n` +
       `📝 总发布数: ${result.totalPublished}\n` +
       `▶️ 总播放量: ${result.totalPlayCount}\n` +
@@ -65,7 +65,7 @@ class NotifyService {
   }
 
   async sendError(chatId, projectName, error) {
-    const text = `❌ **${projectName}** 同步失败\n\n` +
+    const text = `❌ [同步失败] ${projectName}\n\n` +
       `错误信息: ${error.message}\n` +
       `时间: ${new Date().toLocaleString('zh-CN')}`;
 
@@ -83,7 +83,7 @@ class NotifyService {
 
     let text;
     if (status === '成功') {
-      text = `✅ **${projectName}** 同步成功\n\n` +
+      text = `✅ [同步成功] ${projectName}\n\n` +
         `账号数: ${accountsCount || 0}\n` +
         `作品数: ${totalWorks || 0}\n` +
         `失败数: ${totalErrors || 0}\n` +
@@ -91,7 +91,7 @@ class NotifyService {
         `traceId: ${traceId || ''}\n` +
         `时间: ${new Date().toLocaleString('zh-CN')}`;
     } else {
-      text = `❌ **${projectName}** 同步失败\n\n` +
+      text = `❌ [同步失败] ${projectName}\n\n` +
         `错误: ${errorMessage || '未知错误'}\n` +
         `来源: ${triggerSource || 'API'}\n` +
         `traceId: ${traceId || ''}\n` +

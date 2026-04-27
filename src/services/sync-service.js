@@ -99,7 +99,7 @@ class SyncService {
         }
 
         const result = await this.syncAccount(accounts[0], planTableId, projectName, { traceId, triggerSource });
-        await notifyService.sendSyncResult(projectName, '成功', { traceId, recordId, worksCount: result?.worksCount || 0, triggerSource });
+        await notifyService.sendSyncResult(projectName, '成功', { traceId, recordId, totalWorks: result?.worksCount || 0, accountsCount: 1, triggerSource });
         return { success: true, worksCount: result?.worksCount || 0 };
       } catch (error) {
         await notifyService.sendSyncResult(projectName, '失败', { traceId, recordId, errorMessage: error.message, triggerSource });
@@ -179,7 +179,7 @@ class SyncService {
               const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
               createdCount = syncResult.createdCount || 0;
               updatedCount = syncResult.updatedCount || 0;
-              await this.updateAccountStats(account, planTableId, works);
+              await this.updateAccountStats(account, planTableId, filteredWorks);
               totalWorks += filteredWorks.length;
             } else {
               skippedCount = works.length - filteredWorks.length;
@@ -326,31 +326,42 @@ class SyncService {
 
   async fetchPlatformWorks(platformCode, username) {
     const works = [];
+    const maxPages = 20;
 
     switch (platformCode) {
       case 'TK':
       case 'DY': {
         try {
-          const videos = await tikhubApi.getTikTokUserVideos(username);
-          const items = videos.data?.itemList || videos.data?.videos || [];
-          if (items.length) {
-            works.push(...items.map(v => {
-              const stats = v.statistics || v.stats || {};
-              if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
-                logger.warn('TikHub returned play_count=0, possible data source limitation', { username });
-              }
-              return {
-                workId: v.id || v.video_id || v.aweme_id,
-                title: v.desc || v.title || '',
-                link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
-                publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
-                playCount: parseInt(stats.play_count) || 0,
-                diggCount: parseInt(stats.digg_count) || 0,
-                commentCount: parseInt(stats.comment_count) || 0,
-                shareCount: parseInt(stats.share_count) || 0,
-                collectCount: parseInt(stats.collect_count) || 0,
-              };
-            }));
+          let cursor = 0;
+          let page = 0;
+          while (page < maxPages) {
+            const videos = await tikhubApi.getTikTokUserVideos(username, cursor);
+            const items = videos.data?.itemList || videos.data?.videos || [];
+            if (items.length) {
+              works.push(...items.map(v => {
+                const stats = v.statistics || v.stats || {};
+                if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
+                  logger.warn('TikHub returned play_count=0, possible data source limitation', { username });
+                }
+                return {
+                  workId: v.id || v.video_id || v.aweme_id,
+                  title: v.desc || v.title || '',
+                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
+                  publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
+                  playCount: parseInt(stats.play_count) || 0,
+                  diggCount: parseInt(stats.digg_count) || 0,
+                  commentCount: parseInt(stats.comment_count) || 0,
+                  shareCount: parseInt(stats.share_count) || 0,
+                  collectCount: parseInt(stats.collect_count) || 0,
+                };
+              }));
+            }
+            const hasMore = videos.data?.hasMore ?? false;
+            const nextCursor = videos.data?.cursor;
+            if (!hasMore || nextCursor === undefined || nextCursor === cursor) break;
+            cursor = nextCursor;
+            page++;
+            await this._sleep(300);
           }
         } catch (error) {
           if (platformCode === 'DY') {
@@ -366,21 +377,29 @@ class SyncService {
           const channel = await youtubeApi.getChannelByHandle(username) ||
                          await youtubeApi.getChannelById(username);
           if (channel) {
-            const videosData = await youtubeApi.getVideos(channel.id);
-            const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
-            if (videoIds.length > 0) {
-              const stats = await youtubeApi.getVideoStatistics(videoIds);
-              works.push(...stats.map(v => ({
-                workId: v.id,
-                title: v.snippet?.title,
-                link: `https://www.youtube.com/watch?v=${v.id}`,
-                publishTime: v.snippet?.publishedAt ? v.snippet.publishedAt.split('T')[0] : null,
-                playCount: parseInt(v.statistics?.viewCount) || 0,
-                diggCount: parseInt(v.statistics?.likeCount) || 0,
-                commentCount: parseInt(v.statistics?.commentCount) || 0,
-                shareCount: 0,
-                collectCount: 0,
-              })));
+            let pageToken = '';
+            let page = 0;
+            while (page < maxPages) {
+              const videosData = await youtubeApi.getVideos(channel.id, pageToken);
+              const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
+              if (videoIds.length > 0) {
+                const stats = await youtubeApi.getVideoStatistics(videoIds);
+                works.push(...stats.map(v => ({
+                  workId: v.id,
+                  title: v.snippet?.title,
+                  link: `https://www.youtube.com/watch?v=${v.id}`,
+                  publishTime: v.snippet?.publishedAt ? v.snippet.publishedAt.split('T')[0] : null,
+                  playCount: parseInt(v.statistics?.viewCount) || 0,
+                  diggCount: parseInt(v.statistics?.likeCount) || 0,
+                  commentCount: parseInt(v.statistics?.commentCount) || 0,
+                  shareCount: 0,
+                  collectCount: 0,
+                })));
+              }
+              if (!videosData.nextPageToken) break;
+              pageToken = videosData.nextPageToken;
+              page++;
+              await this._sleep(300);
             }
           }
         } catch (error) {
@@ -389,82 +408,135 @@ class SyncService {
         break;
       }
       case 'INS': {
-        const posts = await tikhubApi.getInstagramUserPosts(username);
-        const edges = posts.data?.edges || posts.data?.items || [];
-        if (edges.length) {
-          works.push(...edges.map(item => {
-            const p = item.node || item;
-            return {
-              workId: p.id || p.pk || p.code,
-              title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
-              link: p.link || `https://www.instagram.com/p/${p.code}/`,
-              publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
-              playCount: parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
-              diggCount: parseInt(p.like_count) || 0,
-              commentCount: parseInt(p.comment_count) || 0,
-              shareCount: 0,
-              collectCount: parseInt(p.save_count) || 0,
-            };
-          }));
+        try {
+          let endCursor = '';
+          let page = 0;
+          while (page < maxPages) {
+            const posts = await tikhubApi.getInstagramUserPosts(username, endCursor);
+            const edges = posts.data?.edges || posts.data?.items || [];
+            if (edges.length) {
+              works.push(...edges.map(item => {
+                const p = item.node || item;
+                return {
+                  workId: p.id || p.pk || p.code,
+                  title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
+                  link: p.link || `https://www.instagram.com/p/${p.code}/`,
+                  publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
+                  playCount: parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
+                  diggCount: parseInt(p.like_count) || 0,
+                  commentCount: parseInt(p.comment_count) || 0,
+                  shareCount: 0,
+                  collectCount: parseInt(p.save_count) || 0,
+                };
+              }));
+            }
+            const pageInfo = posts.data?.page_info;
+            if (!pageInfo?.has_next_page || !pageInfo?.end_cursor) break;
+            if (pageInfo.end_cursor === endCursor) break;
+            endCursor = pageInfo.end_cursor;
+            page++;
+            await this._sleep(300);
+          }
+        } catch (error) {
+          logger.error('Instagram API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'INS', fetchedWorks: works.length });
         }
         break;
       }
       case 'X': {
-        const tweets = await tikhubApi.getXUserTweets(username);
-        let tweetList = [];
-        if (tweets.data?.timeline && typeof tweets.data.timeline === 'object') {
-          tweetList = Object.values(tweets.data.timeline);
-        } else if (Array.isArray(tweets.data?.tweets)) {
-          tweetList = tweets.data.tweets;
-        }
-        if (tweetList.length) {
-          works.push(...tweetList.map(t => ({
-            workId: t.tweet_id || t.id || t.rest_id,
-            title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
-            link: `https://x.com/${username}/status/${t.tweet_id || t.id || t.rest_id}`,
-            publishTime: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : null,
-            playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
-            diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
-            commentCount: parseInt(t.replies) || parseInt(t.legacy?.reply_count) || 0,
-            shareCount: parseInt(t.retweets) || parseInt(t.quotes) || parseInt(t.legacy?.retweet_count) || 0,
-            collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
-          })));
+        try {
+          let cursor = '';
+          let page = 0;
+          while (page < maxPages) {
+            const tweets = await tikhubApi.getXUserTweets(username, cursor);
+            let tweetList = [];
+            if (tweets.data?.timeline && typeof tweets.data.timeline === 'object') {
+              tweetList = Object.values(tweets.data.timeline);
+            } else if (Array.isArray(tweets.data?.tweets)) {
+              tweetList = tweets.data.tweets;
+            }
+            if (tweetList.length) {
+              works.push(...tweetList.map(t => ({
+                workId: t.tweet_id || t.id || t.rest_id,
+                title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
+                link: `https://x.com/${username}/status/${t.tweet_id || t.id || t.rest_id}`,
+                publishTime: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : null,
+                playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
+                diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
+                commentCount: parseInt(t.replies) || parseInt(t.legacy?.reply_count) || 0,
+                shareCount: parseInt(t.retweets) || parseInt(t.quotes) || parseInt(t.legacy?.retweet_count) || 0,
+                collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
+              })));
+            }
+            const nextCursor = tweets.data?.next_cursor;
+            if (!nextCursor || nextCursor === cursor) break;
+            cursor = nextCursor;
+            page++;
+            await this._sleep(300);
+          }
+        } catch (error) {
+          logger.error('X API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'X', fetchedWorks: works.length });
         }
         break;
       }
       case 'RD': {
-        const posts = await tikhubApi.getRedditUserPosts(username);
-        const postList = posts.data?.posts || posts.data?.items || [];
-        if (postList.length) {
-          works.push(...postList.map(p => ({
-            workId: p.id,
-            title: p.title?.slice(0, 100) || '',
-            link: p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
-            publishTime: p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null,
-            playCount: parseInt(p.score) || 0,
-            diggCount: parseInt(p.ups) || 0,
-            commentCount: parseInt(p.num_comments) || 0,
-            shareCount: 0,
-            collectCount: 0,
-          })));
+        try {
+          let after = '';
+          let page = 0;
+          while (page < maxPages) {
+            const posts = await tikhubApi.getRedditUserPosts(username, after);
+            const postList = posts.data?.posts || posts.data?.items || [];
+            if (postList.length) {
+              works.push(...postList.map(p => ({
+                workId: p.id,
+                title: p.title?.slice(0, 100) || '',
+                link: p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
+                publishTime: p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null,
+                playCount: parseInt(p.score) || 0,
+                diggCount: parseInt(p.ups) || 0,
+                commentCount: parseInt(p.num_comments) || 0,
+                shareCount: 0,
+                collectCount: 0,
+              })));
+            }
+            const nextAfter = posts.data?.after;
+            if (!nextAfter || nextAfter === after) break;
+            after = nextAfter;
+            page++;
+            await this._sleep(300);
+          }
+        } catch (error) {
+          logger.error('Reddit API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'RD', fetchedWorks: works.length });
         }
         break;
       }
       case 'FB': {
-        const posts = await tikhubApi.getFacebookUserPosts(username);
-        const postList = posts.data?.posts || posts.data?.items || [];
-        if (postList.length) {
-          works.push(...postList.map(p => ({
-            workId: p.id,
-            title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
-            link: p.permalink_url || `https://www.facebook.com/${p.id}`,
-            publishTime: p.created_time ? p.created_time.split('T')[0] : null,
-            playCount: parseInt(p.insights?.find(i => i.name === 'post_impressions')?.values?.[0]?.value) || 0,
-            diggCount: parseInt(p.likes?.summary?.total_count) || 0,
-            commentCount: parseInt(p.comments?.summary?.total_count) || 0,
-            shareCount: parseInt(p.shares?.count) || 0,
-            collectCount: 0,
-          })));
+        try {
+          let cursor = '';
+          let page = 0;
+          while (page < maxPages) {
+            const posts = await tikhubApi.getFacebookUserPosts(username, cursor);
+            const postList = posts.data?.posts || posts.data?.items || [];
+            if (postList.length) {
+              works.push(...postList.map(p => ({
+                workId: p.id,
+                title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
+                link: p.permalink_url || `https://www.facebook.com/${p.id}`,
+                publishTime: p.created_time ? p.created_time.split('T')[0] : null,
+                playCount: parseInt(p.insights?.find(i => i.name === 'post_impressions')?.values?.[0]?.value) || 0,
+                diggCount: parseInt(p.likes?.summary?.total_count) || 0,
+                commentCount: parseInt(p.comments?.summary?.total_count) || 0,
+                shareCount: parseInt(p.shares?.count) || 0,
+                collectCount: 0,
+              })));
+            }
+            const nextCursor = posts.data?.paging?.cursors?.after || posts.data?.next;
+            if (!nextCursor || nextCursor === cursor) break;
+            cursor = nextCursor;
+            page++;
+            await this._sleep(300);
+          }
+        } catch (error) {
+          logger.error('Facebook API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
         }
         break;
       }
