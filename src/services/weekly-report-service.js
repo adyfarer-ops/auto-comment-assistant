@@ -1,4 +1,5 @@
 const feishuBitable = require('./feishu-bitable');
+const feishuSpreadsheet = require('./feishu-spreadsheet');
 const logger = require('../utils/logger');
 
 class WeeklyReportService {
@@ -25,9 +26,9 @@ class WeeklyReportService {
       projectName: fields['项目名称'],
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
+      sheetToken,
     });
 
-    // 获取所有账号
     const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
     const reportData = {
@@ -69,10 +70,51 @@ class WeeklyReportService {
       }, 0) / accounts.length).toFixed(2) + '%';
     }
 
-    // TODO: 写入飞书 Spreadsheet
-    logger.info('Weekly report generated', { summary: reportData.summary });
+    // 写入飞书 Spreadsheet
+    if (sheetToken) {
+      try {
+        await this.writeToSpreadsheet(sheetToken, reportData);
+        logger.info('Weekly report written to spreadsheet', { sheetToken });
+      } catch (error) {
+        logger.error('Failed to write weekly report to spreadsheet', { sheetToken, error: error.message });
+      }
+    }
 
+    logger.info('Weekly report generated', { summary: reportData.summary });
     return reportData;
+  }
+
+  async writeToSpreadsheet(sheetToken, reportData) {
+    const sheetName = 'Sheet1';
+    const headerRow = 1;
+
+    // 写入表头
+    const headers = ['账号名称', '平台', '已发布', '保底条数', '播放量', '发布完成率', '负责人'];
+    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A${headerRow}:G${headerRow}`, [headers]);
+
+    // 写入数据
+    const rows = reportData.accounts.map((a, i) => [
+      a.name,
+      a.platform,
+      a.published,
+      a.target,
+      a.playCount,
+      a.completionRate,
+      a.responsible,
+    ]);
+
+    if (rows.length > 0) {
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A2:G${rows.length + 1}`, rows);
+    }
+
+    // 写入汇总
+    const summaryRow = rows.length + 3;
+    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A${summaryRow}:G${summaryRow + 2}`, [
+      ['汇总', '', '', '', '', '', ''],
+      ['总账号数', reportData.summary.totalAccounts, '', '', '', '', ''],
+      ['总发布数', reportData.summary.totalPublished, '', '', '', '', ''],
+      ['总播放量', reportData.summary.totalPlayCount, '', '', '', '', ''],
+    ]);
   }
 
   extractPlatform(accountName) {

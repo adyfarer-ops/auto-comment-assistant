@@ -234,11 +234,36 @@ class SyncService {
     const totalPlayCount = works.reduce((sum, w) => sum + (w.playCount || 0), 0);
     const publishedCount = works.length;
 
-    await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, {
+    // 按日期统计发布数量
+    const dateStats = this.calculateDateStats(works);
+
+    const updateFields = {
       '目前播放量': totalPlayCount,
       '已发布': String(publishedCount),
       '粉丝总量': account.fields['粉丝总量'], // 保持原值
+      ...dateStats,
+    };
+
+    await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, updateFields);
+  }
+
+  calculateDateStats(works) {
+    const stats = {};
+    const dateMap = new Map();
+
+    works.forEach(work => {
+      if (work.publishTime) {
+        const date = new Date(work.publishTime);
+        const key = `${date.getMonth() + 1}月${date.getDate()}日`;
+        dateMap.set(key, (dateMap.get(key) || 0) + 1);
+      }
     });
+
+    dateMap.forEach((count, key) => {
+      stats[key] = `${count}条`;
+    });
+
+    return stats;
   }
 
   async updateProjectStats(planTableId, projectRecord) {
