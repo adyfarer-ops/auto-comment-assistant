@@ -1,6 +1,7 @@
 const axios = require('axios');
 const feishuBitable = require('./feishu-bitable');
 const feishuAuth = require('./feishu-auth');
+const aiService = require('./ai-service');
 const logger = require('../utils/logger');
 
 class ReportService {
@@ -27,10 +28,19 @@ class ReportService {
     // 获取所有账号数据
     const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
+    // 生成 AI 运营建议
+    let aiSuggestions = '';
+    try {
+      aiSuggestions = await aiService.generateSuggestions(fields['项目名称'], accounts);
+    } catch (error) {
+      logger.error('AI suggestions generation failed', { error: error.message });
+      aiSuggestions = 'AI 建议生成失败，请稍后重试。';
+    }
+
     const reportContent = this.buildReportContent(fields['项目名称'], template, accounts, versionStart, versionEnd);
 
     // 创建飞书文档
-    const docUrl = await this.createFeishuDoc(fields['项目名称'], reportContent, accounts, template);
+    const docUrl = await this.createFeishuDoc(fields['项目名称'], reportContent, accounts, template, aiSuggestions);
 
     // 更新项目管理表
     await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, {
@@ -84,7 +94,7 @@ class ReportService {
     return content;
   }
 
-  async createFeishuDoc(projectName, content, accounts, template) {
+  async createFeishuDoc(projectName, content, accounts, template, aiSuggestions = '') {
     try {
       const token = await feishuAuth.getAppToken();
 
@@ -102,7 +112,7 @@ class ReportService {
       const documentId = createRes.data.data.document.document_id;
 
       // 写入文档内容
-      await this.writeDocBlocks(documentId, token, projectName, content, accounts, template);
+      await this.writeDocBlocks(documentId, token, projectName, content, accounts, template, aiSuggestions);
 
       logger.info('Review report doc created', { documentId });
 
@@ -113,7 +123,7 @@ class ReportService {
     }
   }
 
-  async writeDocBlocks(documentId, token, projectName, content, accounts, template) {
+  async writeDocBlocks(documentId, token, projectName, content, accounts, template, aiSuggestions = '') {
     const blocks = [];
 
     // 标题
@@ -213,6 +223,27 @@ class ReportService {
     };
 
     blocks.push(tableBlock);
+
+    // AI 运营建议
+    if (aiSuggestions) {
+      blocks.push({
+        block_type: 4,
+        heading2: {
+          elements: [{ text_run: { content: 'AI 运营建议' } }],
+        },
+      });
+
+      // 将 AI 建议按段落分割写入
+      const paragraphs = aiSuggestions.split('\n').filter(p => p.trim());
+      for (const para of paragraphs) {
+        blocks.push({
+          block_type: 2,
+          text: {
+            elements: [{ text_run: { content: para } }],
+          },
+        });
+      }
+    }
 
     // 批量写入 blocks
     await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
