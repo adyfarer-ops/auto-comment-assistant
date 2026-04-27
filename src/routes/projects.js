@@ -90,10 +90,13 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
       return res.status(400).json({ code: 400, message: 'tableId is required' });
     }
 
+    const project = await projectService.getProjectByTableId(tableId);
+    const projectName = project ? project.fields['项目名称'] : tableId;
+
     const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const logStartTime = Date.now();
     const logRecordId = await logService.createLog({
-      '项目名称': tableId,
+      '项目名称': projectName,
       '操作类型': '创建详情表',
       '状态': '进行中',
       '开始时间': logStartTime,
