@@ -270,12 +270,12 @@ class ProjectService {
       { field_name: '账号名称', type: 1 },
       { field_name: '负责人', type: 1 },
       { field_name: '制作', type: 1 },
-      { field_name: '主页链接', type: 15 },
       { field_name: '粉丝总量', type: 2, property: { formatter: '0' } },
       { field_name: '目标播放量', type: 2, property: { formatter: '0' } },
-      { field_name: '保底条数', type: 2, property: { formatter: '0' } },
       { field_name: '已发布', type: 2, property: { formatter: '0' } },
       { field_name: '待发布', type: 2, property: { formatter: '0' } },
+      { field_name: '保底条数', type: 2, property: { formatter: '0' } },
+      { field_name: '主页链接', type: 15 },
       { field_name: '目前播放量', type: 2, property: { formatter: '0' } },
     ];
     const fieldIdMap = {};
