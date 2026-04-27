@@ -32,6 +32,9 @@ tableResolver.setProjectMgmtAppToken(projectMgmtAppToken);
 
 app.locals.projectMgmtAppToken = projectMgmtAppToken;
 
+// 启动时修复残留的旧“进行中”日志
+logService.fixStaleLogs().catch((err) => logger.warn('Fix stale logs on startup failed', { error: err.message }));
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));

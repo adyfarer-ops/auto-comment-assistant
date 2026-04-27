@@ -44,6 +44,14 @@ router.post('/create-table', async (req, res, next) => {
       })
       .catch((err) => {
         logger.error('createProjectTable background failed', { recordId, traceId, error: err.message });
+        if (logRecordId) {
+          logService.updateLog(logRecordId, {
+            '状态': '异常',
+            '结束时间': Date.now(),
+            '耗时': logStartTime ? Date.now() - logStartTime : undefined,
+            '错误信息': err.message,
+          }).catch(() => {});
+        }
       });
   } catch (error) {
     next(error);
@@ -100,6 +108,14 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
       })
       .catch((err) => {
         logger.error('createProjectDetailTables background failed', { tableId, traceId, error: err.message });
+        if (logRecordId) {
+          logService.updateLog(logRecordId, {
+            '状态': '异常',
+            '结束时间': Date.now(),
+            '耗时': logStartTime ? Date.now() - logStartTime : undefined,
+            '错误信息': err.message,
+          }).catch(() => {});
+        }
       });
   } catch (error) {
     next(error);
