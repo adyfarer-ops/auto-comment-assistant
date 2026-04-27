@@ -62,13 +62,52 @@ tests/                   # 测试文件
 scripts/                 # 部署脚本
 ```
 
+## 部署
+
+### PM2 部署
+
+```bash
+npm run pm2:start
+npm run pm2:stop
+npm run pm2:restart
+```
+
+### systemd 部署
+
+```bash
+sudo cp scripts/feishu-project-agent.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable feishu-project-agent
+sudo systemctl start feishu-project-agent
+```
+
+### 查看日志
+
+```bash
+# PM2
+pm2 logs feishu-project-agent
+
+# systemd
+sudo journalctl -u feishu-project-agent -f
+```
+
+## 飞书自动化配置
+
+详见 [docs/feishu-automation.md](docs/feishu-automation.md)。
+
 ## 环境变量
 
 | 变量 | 说明 |
 |------|------|
 | FEISHU_APP_ID | 飞书应用 ID（操作表格） |
 | FEISHU_APP_SECRET | 飞书应用 Secret |
+| FEISHU_NOTIFY_APP_ID | 飞书通知应用 ID |
+| FEISHU_NOTIFY_APP_SECRET | 飞书通知应用 Secret |
 | TIKHUB_API_KEY | TikHub API Key |
 | YOUTUBE_API_KEY | YouTube Data API Key |
 | MOONSHOT_API_KEY | Moonshot API Key |
+| DOUBAO_API_KEY | 豆包 API Key |
+| DEEPSEEK_API_KEY | DeepSeek API Key |
 | HTTPS_PROXY | 代理地址 |
+| WEBHOOK_SECRET | Webhook 安全密钥 |
+| PROJECT_MANAGEMENT_TABLE_TOKEN | 项目管理表 Base Token |
