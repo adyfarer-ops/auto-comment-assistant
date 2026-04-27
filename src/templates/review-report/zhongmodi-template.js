@@ -57,6 +57,7 @@ module.exports = {
         playCount,
         published,
         works,
+        fields: af,
       });
       dirData.totalWorks += published;
       dirData.totalPlayCount += playCount;
@@ -147,6 +148,15 @@ module.exports = {
         blocks.push(this.bullet(
           `${acc.platform}平台账号${acc.name}新增播放量${(acc.playCount / 10000).toFixed(0)}w`
         ));
+      }
+
+      // 手动录入字段（方案A）
+      const sampleAcc = dir.accounts[0];
+      if (sampleAcc) {
+        const f = sampleAcc.fields;
+        if (f['涨粉走势']) blocks.push(this.text(`涨粉走势：${f['涨粉走势']}`));
+        if (f['用户画像']) blocks.push(this.text(`用户画像：${f['用户画像']}`));
+        if (f['播放来源']) blocks.push(this.text(`播放来源：${f['播放来源']}`));
       }
 
       blocks.push(this.text('本版本亮点：_待AI填充_'));

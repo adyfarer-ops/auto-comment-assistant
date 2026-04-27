@@ -77,6 +77,7 @@ module.exports = {
         topWork: sortedWorks[0] || null,
         lowWorks: sortedWorks.slice(-3),
         works,
+        fields: af,
       });
     }
 
@@ -158,6 +159,12 @@ module.exports = {
         `本版本累计${acc.playCount.toLocaleString()}播放量，` +
         `新增${acc.fans}粉丝。`
       ));
+      // 手动录入字段（方案A）
+      const f = acc.fields;
+      if (f['涨粉走势']) blocks.push(this.text(`涨粉走势：${f['涨粉走势']}`));
+      if (f['用户画像']) blocks.push(this.text(`用户画像：${f['用户画像']}`));
+      if (f['播放来源']) blocks.push(this.text(`播放来源：${f['播放来源']}`));
+
       blocks.push(this.text('本版本亮点：_待AI填充_'));
       blocks.push(this.text('本版本缺点：_待AI填充_'));
 
