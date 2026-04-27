@@ -5,6 +5,8 @@ const platformResolver = require('./platform-resolver');
 const logService = require('./log-service');
 const logger = require('../utils/logger');
 const projectService = require('./project-service');
+const syncQueue = require('../utils/sync-queue');
+const notifyService = require('./notify-service');
 
 class SyncService {
   constructor() {
@@ -27,58 +29,70 @@ class SyncService {
     const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const triggerSource = options.triggerSource || 'API调用';
 
-    logger.info('Starting project sync', { projectName, planTableId, traceId });
-    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+    return syncQueue.enqueue(`project:${projectName}`, async () => {
+      logger.info('Starting project sync', { projectName, planTableId, traceId });
+      await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
-    try {
-      const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
-      let totalWorks = 0;
-      let totalErrors = 0;
+      try {
+        const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+        let totalWorks = 0;
+        let totalErrors = 0;
 
-      for (const account of accounts) {
-        try {
-          const result = await this.syncAccount(account, planTableId, projectName, { traceId, triggerSource });
-          if (result && result.worksCount) totalWorks += result.worksCount;
-        } catch (error) {
-          totalErrors++;
-          logger.error('Account sync failed in project sync', { accountName: account.fields?.['账号名称'], error: error.message });
+        for (const account of accounts) {
+          try {
+            const result = await this.syncAccount(account, planTableId, projectName, { traceId, triggerSource });
+            if (result && result.worksCount) totalWorks += result.worksCount;
+          } catch (error) {
+            totalErrors++;
+            logger.error('Account sync failed in project sync', { accountName: account.fields?.['账号名称'], error: error.message });
+          }
         }
+
+        await this.updateProjectStats(planTableId, projectRecord);
+
+        logger.info('Project sync completed', { projectName, accountsCount: accounts.length, totalWorks, totalErrors, traceId });
+        await logService.logSyncSuccess(projectName, {
+          masterTableId: planTableId,
+          traceId,
+          triggerSource,
+          stats: { fetched: totalWorks },
+        });
+
+        await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        return { accountsCount: accounts.length, totalWorks, totalErrors };
+      } catch (error) {
+        logger.error('Project sync failed', { projectName, error: error.message, traceId });
+        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+        await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        throw error;
       }
-
-      await this.updateProjectStats(planTableId, projectRecord);
-
-      logger.info('Project sync completed', { projectName, accountsCount: accounts.length, totalWorks, totalErrors, traceId });
-      await logService.logSyncSuccess(projectName, {
-        masterTableId: planTableId,
-        traceId,
-        triggerSource,
-        stats: { fetched: totalWorks },
-      });
-
-      return { accountsCount: accounts.length, totalWorks, totalErrors };
-    } catch (error) {
-      logger.error('Project sync failed', { projectName, error: error.message, traceId });
-      await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
-      throw error;
-    }
+    });
   }
 
   async syncAccountByRecordId(planTableId, recordId, projectName, options = {}) {
     const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const triggerSource = options.triggerSource || 'API调用';
 
-    const accounts = await feishuBitable.searchRecords(
-      this.projectMgmtAppToken,
-      planTableId,
-      `CurrentValue.[记录ID] = "${recordId}"`
-    );
+    return syncQueue.enqueue(`account:${projectName}:${recordId}`, async () => {
+      try {
+        const accounts = await feishuBitable.searchRecords(
+          this.projectMgmtAppToken,
+          planTableId,
+          `CurrentValue.[记录ID] = "${recordId}"`
+        );
 
-    if (!accounts || accounts.length === 0) {
-      throw new Error('Account not found');
-    }
+        if (!accounts || accounts.length === 0) {
+          throw new Error('Account not found');
+        }
 
-    const result = await this.syncAccount(accounts[0], planTableId, projectName, { traceId, triggerSource });
-    return { success: true, worksCount: result?.worksCount || 0 };
+        const result = await this.syncAccount(accounts[0], planTableId, projectName, { traceId, triggerSource });
+        await notifyService.sendSyncResult(projectName, '成功', { traceId, recordId, worksCount: result?.worksCount || 0, triggerSource });
+        return { success: true, worksCount: result?.worksCount || 0 };
+      } catch (error) {
+        await notifyService.sendSyncResult(projectName, '失败', { traceId, recordId, errorMessage: error.message, triggerSource });
+        throw error;
+      }
+    });
   }
 
   _parseDate(input) {
@@ -97,99 +111,33 @@ class SyncService {
     const traceId = options.traceId || `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const triggerSource = options.triggerSource || 'API调用';
 
-    const parsedStart = this._parseDate(startDate);
-    const parsedEnd = this._parseDate(endDate);
+    return syncQueue.enqueue(`project:${projectName}:incremental`, async () => {
+      const parsedStart = this._parseDate(startDate);
+      const parsedEnd = this._parseDate(endDate);
 
-    logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
-    await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
+      logger.info('Starting incremental sync', { projectName, planTableId, startDate, endDate, traceId });
+      await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource });
 
-    let totalWorks = 0;
-    let totalErrors = 0;
+      let totalWorks = 0;
+      let totalErrors = 0;
 
-    try {
-      const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
+      try {
+        const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 
-      for (const account of accounts) {
-        const accountFields = account.fields;
-        const accountName = accountFields['账号名称'];
-        const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
+        for (const account of accounts) {
+          const accountFields = account.fields;
+          const accountName = accountFields['账号名称'];
+          const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
 
-        if (!homeLink) continue;
+          if (!homeLink) continue;
 
-        const platform = platformResolver.detectPlatform(homeLink);
-        if (!platform) continue;
+          const platform = platformResolver.detectPlatform(homeLink);
+          if (!platform) continue;
 
-        const username = platformResolver.extractUsername(homeLink, platform.code);
-        if (!username) continue;
+          const username = platformResolver.extractUsername(homeLink, platform.code);
+          if (!username) continue;
 
-        await logService.logSyncStart(projectName, {
-          accountName,
-          masterTableId: planTableId,
-          accountRecordId: account.record_id,
-          platformCode: platform.code,
-          traceId,
-          triggerSource,
-        });
-
-        try {
-          const works = await this.fetchPlatformWorks(platform.code, username);
-          const filteredWorks = works.filter(work => {
-            if (!work.publishTime) return false;
-            const publishDate = new Date(work.publishTime);
-            if (parsedStart && publishDate < parsedStart) return false;
-            if (parsedEnd && publishDate > parsedEnd) return false;
-            return true;
-          });
-
-          const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
-
-          let createdCount = 0;
-          let updatedCount = 0;
-          let skippedCount = 0;
-
-          if (filteredWorks.length > 0 && detailTableId) {
-            const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
-            createdCount = syncResult.createdCount || 0;
-            updatedCount = syncResult.updatedCount || 0;
-            await this.updateAccountStats(account, planTableId, works);
-            totalWorks += filteredWorks.length;
-          } else {
-            skippedCount = works.length - filteredWorks.length;
-          }
-
-          if (detailTableId) {
-            await logService.logSyncSuccess(projectName, {
-              accountName,
-              masterTableId: planTableId,
-              detailTableId,
-              accountRecordId: account.record_id,
-              platformCode: platform.code,
-              traceId,
-              triggerSource,
-              stats: {
-                original: works.length,
-                filtered: filteredWorks.length,
-                fetched: filteredWorks.length,
-                created: createdCount,
-                updated: updatedCount,
-                skipped: skippedCount,
-              },
-            });
-          } else {
-            await logService.logSyncEnd(projectName, '跳过', {
-              accountName,
-              masterTableId: planTableId,
-              detailTableId,
-              accountRecordId: account.record_id,
-              platformCode: platform.code,
-              traceId,
-              triggerSource,
-            });
-          }
-        } catch (error) {
-          totalErrors++;
-          logger.error('Incremental sync account failed', { accountName, error: error.message, traceId });
-          await logService.logSyncError(projectName, error, {
+          await logService.logSyncStart(projectName, {
             accountName,
             masterTableId: planTableId,
             accountRecordId: account.record_id,
@@ -197,25 +145,95 @@ class SyncService {
             traceId,
             triggerSource,
           });
+
+          try {
+            const works = await this.fetchPlatformWorks(platform.code, username);
+            const filteredWorks = works.filter(work => {
+              if (!work.publishTime) return false;
+              const publishDate = new Date(work.publishTime);
+              if (parsedStart && publishDate < parsedStart) return false;
+              if (parsedEnd && publishDate > parsedEnd) return false;
+              return true;
+            });
+
+            const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+
+            let createdCount = 0;
+            let updatedCount = 0;
+            let skippedCount = 0;
+
+            if (filteredWorks.length > 0 && detailTableId) {
+              const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
+              createdCount = syncResult.createdCount || 0;
+              updatedCount = syncResult.updatedCount || 0;
+              await this.updateAccountStats(account, planTableId, works);
+              totalWorks += filteredWorks.length;
+            } else {
+              skippedCount = works.length - filteredWorks.length;
+            }
+
+            if (detailTableId) {
+              await logService.logSyncSuccess(projectName, {
+                accountName,
+                masterTableId: planTableId,
+                detailTableId,
+                accountRecordId: account.record_id,
+                platformCode: platform.code,
+                traceId,
+                triggerSource,
+                stats: {
+                  original: works.length,
+                  filtered: filteredWorks.length,
+                  fetched: filteredWorks.length,
+                  created: createdCount,
+                  updated: updatedCount,
+                  skipped: skippedCount,
+                },
+              });
+            } else {
+              await logService.logSyncEnd(projectName, '跳过', {
+                accountName,
+                masterTableId: planTableId,
+                detailTableId,
+                accountRecordId: account.record_id,
+                platformCode: platform.code,
+                traceId,
+                triggerSource,
+              });
+            }
+          } catch (error) {
+            totalErrors++;
+            logger.error('Incremental sync account failed', { accountName, error: error.message, traceId });
+            await logService.logSyncError(projectName, error, {
+              accountName,
+              masterTableId: planTableId,
+              accountRecordId: account.record_id,
+              platformCode: platform.code,
+              traceId,
+              triggerSource,
+            });
+          }
         }
+
+        await this.updateProjectStats(planTableId, projectRecord);
+
+        logger.info('Incremental sync completed', { projectName, totalWorks, totalErrors, traceId });
+        await logService.logSyncSuccess(projectName, {
+          masterTableId: planTableId,
+          traceId,
+          triggerSource,
+          stats: { fetched: totalWorks },
+        });
+
+        await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+        return { totalWorks, totalErrors };
+      } catch (error) {
+        logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
+        await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
+        await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+        throw error;
       }
-
-      await this.updateProjectStats(planTableId, projectRecord);
-
-      logger.info('Incremental sync completed', { projectName, totalWorks, totalErrors, traceId });
-      await logService.logSyncSuccess(projectName, {
-        masterTableId: planTableId,
-        traceId,
-        triggerSource,
-        stats: { fetched: totalWorks },
-      });
-
-      return { totalWorks, totalErrors };
-    } catch (error) {
-      logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
-      await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource });
-      throw error;
-    }
+    });
   }
 
   async clearSyncProgress(projectName) {
