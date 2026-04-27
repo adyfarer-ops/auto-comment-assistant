@@ -58,7 +58,8 @@ class NotifyService {
       logger.info('Interactive card sent', { chatId });
       return response.data.data;
     } catch (error) {
-      logger.error('Failed to send interactive card', { chatId, error: error.message });
+      const responseBody = error.response?.data;
+      logger.error('Failed to send interactive card', { chatId, error: error.message, responseBody });
       throw error;
     }
   }
@@ -66,6 +67,7 @@ class NotifyService {
   async sendProjectSyncResult(chatId, projectName, result) {
     const time = new Date().toLocaleString('zh-CN');
     const card = {
+      config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `📊 同步完成 | ${projectName}` },
         template: 'green',
@@ -106,6 +108,7 @@ class NotifyService {
     }
 
     const card = {
+      config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `📋 周报已生成 | ${projectName}` },
         template: 'blue',
@@ -128,6 +131,7 @@ class NotifyService {
   async sendError(chatId, projectName, error) {
     const time = new Date().toLocaleString('zh-CN');
     const card = {
+      config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `❌ 同步失败 | ${projectName}` },
         template: 'red',
@@ -183,6 +187,7 @@ class NotifyService {
     }
 
     const card = {
+      config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: headerTitle },
         template: templateColor,

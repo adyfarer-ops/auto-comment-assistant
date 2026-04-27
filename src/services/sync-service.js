@@ -705,16 +705,12 @@ class SyncService {
       }
     });
 
-    const entries = Array.from(dateMap.entries())
-      .sort((a, b) => {
-        const [ma, da] = a[0].match(/(\d+)月(\d+)日/).slice(1).map(Number);
-        const [mb, db] = b[0].match(/(\d+)月(\d+)日/).slice(1).map(Number);
-        return ma !== mb ? ma - mb : da - db;
-      })
-      .map(([key, count]) => `${key}: ${count}条`)
-      .join(', ');
+    const result = {};
+    for (const [key, count] of dateMap) {
+      result[key] = count;
+    }
 
-    return { '发布日期统计': entries || '' };
+    return result;
   }
 
   async updateProjectStats(planTableId, projectRecord) {

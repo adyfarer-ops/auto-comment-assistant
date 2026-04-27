@@ -54,8 +54,11 @@ class PlatformResolver {
         case 'INS':
         case 'X':
         case 'FB':
-        case 'RD':
           return pathParts[0];
+        case 'RD': {
+          const redditUser = pathParts.find((_, i) => pathParts[i - 1] === 'user' || pathParts[i - 1] === 'u');
+          return redditUser || pathParts[0];
+        }
         case 'BILI':
           return pathParts[1];
         case 'DY':
