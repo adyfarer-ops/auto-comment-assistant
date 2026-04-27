@@ -5,6 +5,8 @@ const syncService = require('../services/sync-service');
 const weeklyReportService = require('../services/weekly-report-service');
 const reportService = require('../services/report-service');
 const projectService = require('../services/project-service');
+const logService = require('../services/log-service');
+const notifyService = require('../services/notify-service');
 const logger = require('../utils/logger');
 
 // 飞书按钮触发同步
@@ -16,12 +18,17 @@ router.post('/sync/:recordId', verifyWebhookToken, async (req, res, next) => {
     }
 
     await projectService.updateProjectStatus(project.record_id, '执行中');
+    await logService.logSyncStart(project.fields['项目名称']);
 
     syncService.syncProject(project)
-      .then(() => projectService.updateProjectStatus(project.record_id, '成功'))
-      .catch((err) => {
+      .then(async (result) => {
+        await projectService.updateProjectStatus(project.record_id, '成功');
+        await logService.logSyncSuccess(project.fields['项目名称'], `Synced ${result.accountsCount} accounts`);
+      })
+      .catch(async (err) => {
         logger.error('Webhook sync failed', { error: err.message });
-        projectService.updateProjectStatus(project.record_id, '失败');
+        await projectService.updateProjectStatus(project.record_id, '失败');
+        await logService.logSyncError(project.fields['项目名称'], err);
       });
 
     res.json({ code: 0, message: 'Sync triggered via webhook' });

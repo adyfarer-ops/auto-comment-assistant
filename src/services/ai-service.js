@@ -16,7 +16,12 @@ class AIService {
       return this.callMoonshot(prompt);
     }
 
-    // 其次使用 DeepSeek
+    // 其次使用豆包
+    if (config.ai.doubao.apiKey) {
+      return this.callDoubao(prompt);
+    }
+
+    // 最后使用 DeepSeek
     if (config.ai.deepseek.apiKey) {
       return this.callDeepSeek(prompt);
     }
@@ -66,6 +71,31 @@ class AIService {
       return response.data.choices[0].message.content;
     } catch (error) {
       logger.error('Moonshot API failed', { error: error.message });
+      throw error;
+    }
+  }
+
+  async callDoubao(prompt) {
+    try {
+      const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
+        model: 'doubao-pro-128k',
+        messages: [
+          { role: 'system', content: '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.7,
+      }, {
+        headers: {
+          Authorization: `Bearer ${config.ai.doubao.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 60000,
+        httpsAgent: this.agent,
+      });
+
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      logger.error('Doubao API failed', { error: error.message });
       throw error;
     }
   }

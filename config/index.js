@@ -27,6 +27,7 @@ module.exports = {
     },
     doubao: {
       apiKey: process.env.DOUBAO_API_KEY,
+      baseUrl: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
     },
     deepseek: {
       apiKey: process.env.DEEPSEEK_API_KEY,
