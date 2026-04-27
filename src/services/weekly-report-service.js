@@ -4,6 +4,7 @@ const feishuSpreadsheet = require('./feishu-spreadsheet');
 const feishuAuth = require('./feishu-auth');
 const aiService = require('./ai-service');
 const notifyService = require('./notify-service');
+const syncService = require('./sync-service');
 const logger = require('../utils/logger');
 
 class WeeklyReportService {
@@ -32,6 +33,16 @@ class WeeklyReportService {
       endDate: endDate.toISOString().split('T')[0],
       sheetToken,
     });
+
+    // 先按周报周期同步数据，确保详情表和账号统计是最新的
+    try {
+      await syncService.syncProjectIncremental(projectRecord, startDate, endDate, {
+        triggerSource: '周报生成',
+      });
+      logger.info('Weekly data sync completed before report generation', { projectName: fields['项目名称'] });
+    } catch (error) {
+      logger.error('Weekly data sync failed before report generation, continuing with existing data', { projectName: fields['项目名称'], error: error.message });
+    }
 
     const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
 

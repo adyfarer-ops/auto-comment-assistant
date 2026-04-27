@@ -35,12 +35,57 @@ class NotifyService {
     }
   }
 
-  async sendProjectSyncResult(chatId, projectName, result) {
-    const text = `📊 [同步完成] ${projectName}\n\n` +
-      `✅ 账号数: ${result.accountsCount}\n` +
-      `⏱️ 时间: ${new Date().toLocaleString('zh-CN')}`;
+  async sendInteractiveCard(chatId, card) {
+    try {
+      const token = await feishuAuth.getNotifyAppToken();
 
-    return this.sendMessage(chatId, text);
+      const response = await axios.post(`${this.baseUrl}/messages`, {
+        receive_id: chatId,
+        msg_type: 'interactive',
+        content: JSON.stringify({ card }),
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        params: { receive_id_type: 'chat_id' },
+      });
+
+      if (response.data.code !== 0) {
+        throw new Error(`Send interactive card failed: ${response.data.msg}`);
+      }
+
+      logger.info('Interactive card sent', { chatId });
+      return response.data.data;
+    } catch (error) {
+      logger.error('Failed to send interactive card', { chatId, error: error.message });
+      throw error;
+    }
+  }
+
+  async sendProjectSyncResult(chatId, projectName, result) {
+    const time = new Date().toLocaleString('zh-CN');
+    const card = {
+      header: {
+        title: { tag: 'plain_text', content: `📊 同步完成 | ${projectName}` },
+        template: 'green',
+      },
+      elements: [
+        {
+          tag: 'div',
+          text: {
+            tag: 'lark_md',
+            content: `**账号数：**${result.accountsCount || 0}`,
+          },
+        },
+        {
+          tag: 'note',
+          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+        },
+      ],
+    };
+
+    return this.sendInteractiveCard(chatId, card);
   }
 
   async sendWeeklyReportResult(projectName, result) {
@@ -50,26 +95,59 @@ class NotifyService {
       return;
     }
 
-    let text = `📋 [周报已生成] ${projectName}\n\n` +
-      `✅ 账号数: ${result.accountsCount}\n` +
-      `📝 总发布数: ${result.totalPublished}\n` +
-      `▶️ 总播放量: ${result.totalPlayCount}\n` +
-      `📈 平均完成率: ${result.avgCompletionRate}\n` +
-      `⏱️ 时间: ${new Date().toLocaleString('zh-CN')}`;
+    const time = new Date().toLocaleString('zh-CN');
+    let mdContent = `**账号数：**${result.accountsCount || 0}\n` +
+      `**总发布数：**${result.totalPublished || 0}\n` +
+      `**总播放量：**${result.totalPlayCount || 0}\n` +
+      `**平均完成率：**${result.avgCompletionRate || 0}`;
 
     if (result.docUrl) {
-      text += `\n\n📄 文档链接: ${result.docUrl}`;
+      mdContent += `\n\n**文档链接：**${result.docUrl}`;
     }
 
-    return this.sendMessage(chatId, text);
+    const card = {
+      header: {
+        title: { tag: 'plain_text', content: `📋 周报已生成 | ${projectName}` },
+        template: 'blue',
+      },
+      elements: [
+        {
+          tag: 'div',
+          text: { tag: 'lark_md', content: mdContent },
+        },
+        {
+          tag: 'note',
+          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+        },
+      ],
+    };
+
+    return this.sendInteractiveCard(chatId, card);
   }
 
   async sendError(chatId, projectName, error) {
-    const text = `❌ [同步失败] ${projectName}\n\n` +
-      `错误信息: ${error.message}\n` +
-      `时间: ${new Date().toLocaleString('zh-CN')}`;
+    const time = new Date().toLocaleString('zh-CN');
+    const card = {
+      header: {
+        title: { tag: 'plain_text', content: `❌ 同步失败 | ${projectName}` },
+        template: 'red',
+      },
+      elements: [
+        {
+          tag: 'div',
+          text: {
+            tag: 'lark_md',
+            content: `**错误信息：**${error.message || '未知错误'}`,
+          },
+        },
+        {
+          tag: 'note',
+          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+        },
+      ],
+    };
 
-    return this.sendMessage(chatId, text);
+    return this.sendInteractiveCard(chatId, card);
   }
 
   async sendSyncResult(projectName, status, options = {}) {
@@ -79,26 +157,57 @@ class NotifyService {
       return;
     }
 
-    const { traceId, accountsCount, totalWorks, totalErrors, errorMessage, triggerSource } = options;
+    const { traceId, accountsCount, totalWorks, totalErrors, errorMessage, triggerSource, startDate, endDate } = options;
+    const time = new Date().toLocaleString('zh-CN');
 
-    let text;
+    let titleText;
+    let templateColor;
+    let mdContent;
+
     if (status === '成功') {
-      text = `✅ [同步成功] ${projectName}\n\n` +
-        `账号数: ${accountsCount || 0}\n` +
-        `作品数: ${totalWorks || 0}\n` +
-        `失败数: ${totalErrors || 0}\n` +
-        `来源: ${triggerSource || 'API'}\n` +
-        `traceId: ${traceId || ''}\n` +
-        `时间: ${new Date().toLocaleString('zh-CN')}`;
+      titleText = `✅ 同步成功 | ${projectName}`;
+      templateColor = 'green';
+      mdContent = `**账号数：**${accountsCount || 0}\n` +
+        `**作品数：**${totalWorks || 0}\n` +
+        `**失败数：**${totalErrors || 0}`;
     } else {
-      text = `❌ [同步失败] ${projectName}\n\n` +
-        `错误: ${errorMessage || '未知错误'}\n` +
-        `来源: ${triggerSource || 'API'}\n` +
-        `traceId: ${traceId || ''}\n` +
-        `时间: ${new Date().toLocaleString('zh-CN')}`;
+      titleText = `❌ 同步失败 | ${projectName}`;
+      templateColor = 'red';
+      mdContent = `**错误：**${errorMessage || '未知错误'}`;
     }
 
-    return this.sendMessage(chatId, text);
+    // 日期范围（参考旧设计格式：项目名称（开始日期 ~ 结束日期））
+    let headerTitle = titleText;
+    if (startDate && endDate) {
+      headerTitle = `${titleText}（${startDate} ~ ${endDate}）`;
+    }
+
+    const card = {
+      header: {
+        title: { tag: 'plain_text', content: headerTitle },
+        template: templateColor,
+      },
+      elements: [
+        {
+          tag: 'div',
+          text: { tag: 'lark_md', content: mdContent },
+        },
+        { tag: 'hr' },
+        {
+          tag: 'div',
+          text: {
+            tag: 'lark_md',
+            content: `**来源：**${triggerSource || 'API'}\n**traceId：**${traceId || ''}`,
+          },
+        },
+        {
+          tag: 'note',
+          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+        },
+      ],
+    };
+
+    return this.sendInteractiveCard(chatId, card);
   }
 }
 

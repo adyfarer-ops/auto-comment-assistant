@@ -225,8 +225,8 @@ class ProjectService {
     const fields = result?.record?.fields || {};
     return {
       projectName: fields['项目名称'],
-      startDate: fields['开始日期'],
-      endDate: fields['结束日期'],
+      startDate: fields['版本开始日期'] || fields['开始日期'],
+      endDate: fields['版本结束日期'] || fields['结束日期'],
       tableId: fields['表格ID'],
     };
   }
