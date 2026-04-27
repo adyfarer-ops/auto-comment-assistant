@@ -241,7 +241,7 @@ class ProjectService {
           '触发来源': options.triggerSource || 'API',
         };
         if (logStartTime) {
-          logFields['耗时'] = String(Date.now() - logStartTime);
+          logFields['耗时'] = logService.formatDuration(Date.now() - logStartTime);
         }
         await logService.updateLog(logRecordId, logFields);
       }
@@ -259,7 +259,7 @@ class ProjectService {
           '触发来源': options.triggerSource || 'API',
         };
         if (logStartTime) {
-          logFields['耗时'] = String(Date.now() - logStartTime);
+          logFields['耗时'] = logService.formatDuration(Date.now() - logStartTime);
         }
         await logService.updateLog(logRecordId, logFields);
       }
@@ -481,7 +481,7 @@ class ProjectService {
         '触发来源': options.triggerSource || 'API',
       };
       if (options.logStartTime) {
-        logFields['耗时'] = String(Date.now() - options.logStartTime);
+        logFields['耗时'] = logService.formatDuration(Date.now() - options.logStartTime);
       }
       if (options.logRecordId) {
         await logService.updateLog(options.logRecordId, logFields);
@@ -501,7 +501,7 @@ class ProjectService {
         '触发来源': options.triggerSource || 'API',
       };
       if (options.logStartTime) {
-        logFields['耗时'] = String(Date.now() - options.logStartTime);
+        logFields['耗时'] = logService.formatDuration(Date.now() - options.logStartTime);
       }
       if (options.logRecordId) {
         await logService.updateLog(options.logRecordId, logFields);

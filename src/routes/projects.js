@@ -48,7 +48,7 @@ router.post('/create-table', async (req, res, next) => {
           logService.updateLog(logRecordId, {
             '状态': '异常终止',
             '结束时间': Date.now(),
-            '耗时': logStartTime ? String(Date.now() - logStartTime) : undefined,
+            '耗时': logStartTime ? logService.formatDuration(Date.now() - logStartTime) : undefined,
             '错误信息': err.message,
           }).catch(() => {});
         }
@@ -112,7 +112,7 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
           logService.updateLog(logRecordId, {
             '状态': '异常终止',
             '结束时间': Date.now(),
-            '耗时': logStartTime ? String(Date.now() - logStartTime) : undefined,
+            '耗时': logStartTime ? logService.formatDuration(Date.now() - logStartTime) : undefined,
             '错误信息': err.message,
           }).catch(() => {});
         }

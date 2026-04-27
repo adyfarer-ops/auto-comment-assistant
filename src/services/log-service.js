@@ -21,6 +21,15 @@ class LogService {
     return d.getTime();
   }
 
+  formatDuration(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  }
+
   async createLog(fields) {
     try {
       const result = await feishuBitable.createRecord(this.projectMgmtAppToken, this.logTableId, fields);
@@ -84,7 +93,7 @@ class LogService {
 
     const { startTime } = options;
     if (startTime) {
-      fields['耗时'] = String(Date.now() - startTime);
+      fields['耗时'] = this.formatDuration(Date.now() - startTime);
     }
 
     if (logRecordId) {
@@ -113,7 +122,7 @@ class LogService {
           await this.updateLog(record.record_id, {
             '状态': '异常终止',
             '结束时间': now,
-            '耗时': String(now - startTime),
+            '耗时': this.formatDuration(now - startTime),
             '错误信息': '任务超时或系统中断',
           });
           fixed++;
