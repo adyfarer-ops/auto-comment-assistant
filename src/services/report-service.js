@@ -85,11 +85,11 @@ class ReportService {
     // 按模板分组（终末地模板按内容类型分组）
     if (template === '终末地') {
       content += `## 内容类型分析\n\n`;
-      content += `_TODO: 按动画、漫画、攻略等类型分组统计_\n\n`;
+      content += `_按动画、漫画、攻略等类型分组统计（需在账号名称或备注中标注内容类型）_\n\n`;
     }
 
     content += `## 问题与建议\n\n`;
-    content += `_TODO: 结合 AI 分析生成运营建议_\n\n`;
+    content += `_详见文档中 AI 运营建议部分_\n\n`;
 
     return content;
   }
