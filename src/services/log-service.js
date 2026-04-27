@@ -13,12 +13,12 @@ class LogService {
 
   _formatDateTime(date) {
     const d = date || new Date();
-    return Math.floor(d.getTime() / 1000);
+    return d.getTime();
   }
 
   _formatDate(date) {
     const d = date || new Date();
-    return Math.floor(d.getTime() / 1000);
+    return d.getTime();
   }
 
   async createLog(fields) {

@@ -107,6 +107,10 @@ class FeishuBitableService {
     return this.request('PUT', `/apps/${appToken}/tables/${tableId}/fields/${fieldId}`, fieldData);
   }
 
+  async deleteField(appToken, tableId, fieldId) {
+    return this.request('DELETE', `/apps/${appToken}/tables/${tableId}/fields/${fieldId}`);
+  }
+
   // === Records ===
   async getRecord(appToken, tableId, recordId) {
     return this.request('GET', `/apps/${appToken}/tables/${tableId}/records/${recordId}`);

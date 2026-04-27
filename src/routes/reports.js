@@ -26,7 +26,7 @@ router.post('/weekly-report/generate', async (req, res, next) => {
       '项目名称': projectName,
       '操作类型': '生成周报',
       '状态': '进行中',
-      '开始时间': Math.floor(Date.now() / 1000),
+      '开始时间': Date.now(),
       'traceId': traceId,
       '触发来源': req.body.triggerSource || 'API',
     });
@@ -40,7 +40,7 @@ router.post('/weekly-report/generate', async (req, res, next) => {
           '项目名称': projectName,
           '操作类型': '生成周报',
           '状态': '成功',
-          '结束时间': Math.floor(Date.now() / 1000),
+          '结束时间': Date.now(),
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
@@ -51,7 +51,7 @@ router.post('/weekly-report/generate', async (req, res, next) => {
           '项目名称': projectName,
           '操作类型': '生成周报',
           '状态': '失败',
-          '结束时间': Math.floor(Date.now() / 1000),
+          '结束时间': Date.now(),
           '错误信息': error.message,
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
@@ -88,7 +88,7 @@ router.post('/review-report/generate', async (req, res, next) => {
       '项目名称': projectName,
       '操作类型': '生成复盘报告',
       '状态': '进行中',
-      '开始时间': Math.floor(Date.now() / 1000),
+      '开始时间': Date.now(),
       'traceId': traceId,
       '触发来源': req.body.triggerSource || 'API',
     });
@@ -102,7 +102,7 @@ router.post('/review-report/generate', async (req, res, next) => {
           '项目名称': projectName,
           '操作类型': '生成复盘报告',
           '状态': '成功',
-          '结束时间': Math.floor(Date.now() / 1000),
+          '结束时间': Date.now(),
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
@@ -123,7 +123,7 @@ router.post('/review-report/generate', async (req, res, next) => {
           '项目名称': projectName,
           '操作类型': '生成复盘报告',
           '状态': '失败',
-          '结束时间': Math.floor(Date.now() / 1000),
+          '结束时间': Date.now(),
           '错误信息': error.message,
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',

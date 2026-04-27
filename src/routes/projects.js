@@ -25,7 +25,7 @@ router.post('/create-table', async (req, res, next) => {
       '项目名称': recordId,
       '操作类型': '创建总表',
       '状态': '进行中',
-      '开始时间': Math.floor(Date.now() / 1000),
+      '开始时间': Date.now(),
       'traceId': traceId,
       '触发来源': req.body.triggerSource || 'API',
     });
@@ -80,7 +80,7 @@ router.post('/:tableId/create-tables', async (req, res, next) => {
       '项目名称': tableId,
       '操作类型': '创建详情表',
       '状态': '进行中',
-      '开始时间': Math.floor(Date.now() / 1000),
+      '开始时间': Date.now(),
       'traceId': traceId,
       '触发来源': req.body?.triggerSource || 'API',
     });

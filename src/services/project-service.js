@@ -65,8 +65,16 @@ class ProjectService {
       }
       logger.info('Empty detail table created', { tableName, tableId: newTableId });
 
+      // 将默认多行文本字段替换为序号（自动编号）
+      const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
+      const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, { field_name: '序号', type: 1005 });
+      if (defaultField?.field_id) {
+        await feishuBitable.deleteField(this.projectMgmtAppToken, newTableId, defaultField.field_id);
+      }
+      await this._sleep(300);
+
       const detailFields = [
-        { field_name: 'ID', type: 1005 },
         { field_name: '总表记录ID', type: 1 },
         { field_name: '作品ID', type: 1 },
         { field_name: '作品标题', type: 1 },
@@ -209,22 +217,20 @@ class ProjectService {
         throw new Error(`项目规划表已存在: ${tableName}`);
       }
 
-      const createResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName, [
-        {
-          field_name: '序号',
-          type: 1005,
-          property: {
-            options: [
-              { type: 'custom', value: 'NO.' },
-              { type: 'autoNumber', value: '3' },
-            ],
-          },
-        },
-      ]);
+      const createResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName);
       const newTableId = createResult.table_id;
       if (!newTableId) {
         throw new Error('创建表失败，未返回 table_id');
       }
+
+      // 将默认多行文本字段替换为序号（自动编号）
+      const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, newTableId);
+      const defaultField = tableFields?.items?.find(f => f.field_name === '多行文本' || f.type === 1);
+      await feishuBitable.createField(this.projectMgmtAppToken, newTableId, { field_name: '序号', type: 1005 });
+      if (defaultField?.field_id) {
+        await feishuBitable.deleteField(this.projectMgmtAppToken, newTableId, defaultField.field_id);
+      }
+      await this._sleep(300);
       logger.info('Plan table created with 序号 field', { newTableId, tableName });
 
       const fieldIdMap = {};
@@ -332,7 +338,7 @@ class ProjectService {
         '项目名称': projectName,
         '操作类型': '创建总表',
         '状态': '成功',
-        '结束时间': Math.floor(Date.now() / 1000),
+        '结束时间': Date.now(),
         '总表ID': newTableId,
         'traceId': traceId,
         '触发来源': options.triggerSource || 'API',
@@ -344,7 +350,7 @@ class ProjectService {
         '项目名称': projectName || '',
         '操作类型': '创建总表',
         '状态': '失败',
-        '结束时间': Math.floor(Date.now() / 1000),
+        '结束时间': Date.now(),
         '错误信息': error.message,
         'traceId': traceId,
         '触发来源': options.triggerSource || 'API',

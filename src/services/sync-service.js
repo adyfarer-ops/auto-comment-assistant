@@ -32,7 +32,7 @@ class SyncService {
 
   _formatDateTime(date) {
     const d = date || new Date();
-    return Math.floor(d.getTime() / 1000);
+    return d.getTime();
   }
 
   async syncProject(projectRecord, options = {}) {

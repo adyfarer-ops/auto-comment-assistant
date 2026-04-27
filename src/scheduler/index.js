@@ -15,13 +15,14 @@ function initSchedulers() {
     const projects = await projectService.listProjects();
 
     for (const project of projects) {
+      const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       try {
-        await logService.logSyncStart(project.name);
-        await syncService.syncProject({ fields: project, record_id: project.recordId });
-        await logService.logSyncSuccess(project.name, `Synced ${project.name}`);
+        await logService.logSyncStart(project.name, { traceId, triggerSource: '定时任务' });
+        await syncService.syncProject({ fields: project, record_id: project.recordId }, { traceId, triggerSource: '定时任务' });
+        await logService.logSyncSuccess(project.name, { traceId, triggerSource: '定时任务' });
       } catch (error) {
         logger.error('Daily sync project failed', { project: project.name, error: error.message });
-        await logService.logSyncError(project.name, error);
+        await logService.logSyncError(project.name, error, { traceId, triggerSource: '定时任务' });
       }
     }
 
@@ -36,13 +37,29 @@ function initSchedulers() {
     for (const project of projects) {
       if (!project.weeklySheet) continue;
 
+      const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       try {
         const projectRecord = { fields: project, record_id: project.recordId };
         await weeklyReportService.generateWeeklyReport(projectRecord);
-        await logService.createLog(project.name, '周报生成', '成功', '周报已生成');
+        await logService.createLog({
+          '项目名称': project.name,
+          '操作类型': '生成周报',
+          '状态': '成功',
+          '结束时间': Date.now(),
+          'traceId': traceId,
+          '触发来源': '定时任务',
+        });
       } catch (error) {
         logger.error('Weekly report generation failed', { project: project.name, error: error.message });
-        await logService.createLog(project.name, '周报生成', '失败', error.message);
+        await logService.createLog({
+          '项目名称': project.name,
+          '操作类型': '生成周报',
+          '状态': '失败',
+          '结束时间': Date.now(),
+          '错误信息': error.message,
+          'traceId': traceId,
+          '触发来源': '定时任务',
+        });
       }
     }
 
