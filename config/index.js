@@ -31,7 +31,11 @@ module.exports = {
     },
     deepseek: {
       apiKey: process.env.DEEPSEEK_API_KEY,
-      baseUrl: 'https://api.deepseek.com/v1',
+      baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+    },
+    videoAnalysis: {
+      apiKey: process.env.VIDEO_ANALYSIS_API_KEY,
+      baseUrl: process.env.VIDEO_ANALYSIS_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
     },
   },
 
