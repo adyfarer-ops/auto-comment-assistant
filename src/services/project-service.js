@@ -24,11 +24,20 @@ class ProjectService {
     }));
   }
 
-  async getProject(recordId) {
+  async getProjectByRecordId(recordId) {
     const records = await feishuBitable.searchRecords(
       this.projectMgmtAppToken,
       'tblxbkkh03Kw10lI',
       `CurrentValue.[序号] = "${recordId}"`
+    );
+    return records[0] || null;
+  }
+
+  async getProjectByTableId(tableId) {
+    const records = await feishuBitable.searchRecords(
+      this.projectMgmtAppToken,
+      'tblxbkkh03Kw10lI',
+      `CurrentValue.[表格ID] = "${tableId}"`
     );
     return records[0] || null;
   }

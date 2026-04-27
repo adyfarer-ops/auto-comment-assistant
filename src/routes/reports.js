@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
 // 生成周报
 router.post('/weekly/:recordId', async (req, res, next) => {
   try {
-    const project = await projectService.getProject(req.params.recordId);
+    const project = await projectService.getProjectByRecordId(req.params.recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
@@ -23,7 +23,7 @@ router.post('/weekly/:recordId', async (req, res, next) => {
 // 生成复盘报告
 router.post('/review/:recordId', async (req, res, next) => {
   try {
-    const project = await projectService.getProject(req.params.recordId);
+    const project = await projectService.getProjectByRecordId(req.params.recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }

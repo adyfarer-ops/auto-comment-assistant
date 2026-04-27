@@ -14,7 +14,7 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:recordId', async (req, res, next) => {
   try {
-    const project = await projectService.getProject(req.params.recordId);
+    const project = await projectService.getProjectByRecordId(req.params.recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
@@ -26,7 +26,7 @@ router.get('/:recordId', async (req, res, next) => {
 
 router.get('/:recordId/accounts', async (req, res, next) => {
   try {
-    const project = await projectService.getProject(req.params.recordId);
+    const project = await projectService.getProjectByRecordId(req.params.recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }

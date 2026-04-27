@@ -5,7 +5,7 @@ const projectService = require('../services/project-service');
 
 router.post('/suggestions/:recordId', async (req, res, next) => {
   try {
-    const project = await projectService.getProject(req.params.recordId);
+    const project = await projectService.getProjectByRecordId(req.params.recordId);
     if (!project) {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
