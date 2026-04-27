@@ -12,6 +12,28 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+router.post('/create-table', async (req, res, next) => {
+  try {
+    const { recordId } = req.body;
+    if (!recordId) {
+      return res.status(400).json({ code: 400, message: 'recordId is required' });
+    }
+
+    const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    res.status(202).json({ code: 0, message: 'Project table creation started', traceId });
+
+    projectService.createProjectTable(recordId, { traceId, triggerSource: req.body.triggerSource || 'API' })
+      .then((result) => {
+        logger.info('createProjectTable background completed', { recordId, tableId: result.tableId, traceId });
+      })
+      .catch((err) => {
+        logger.error('createProjectTable background failed', { recordId, traceId, error: err.message });
+      });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:recordId', async (req, res, next) => {
   try {
     const project = await projectService.getProjectByRecordId(req.params.recordId);
