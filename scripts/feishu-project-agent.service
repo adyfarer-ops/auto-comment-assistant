@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/zhaomiao/workspace-project-planning
-ExecStart=/usr/bin/node src/app.js
+ExecStart=/usr/bin/node src/server.js
 Restart=on-failure
 RestartSec=10
 Environment=NODE_ENV=production

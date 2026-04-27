@@ -46,9 +46,4 @@ app.get('/', (req, res) => {
 
 app.use(errorHandler);
 
-const PORT = config.port;
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
-
 module.exports = app;
