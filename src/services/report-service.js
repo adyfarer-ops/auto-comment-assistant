@@ -126,6 +126,15 @@ class ReportService {
     while ((match = regex.exec(aiText)) !== null) {
       sections[match[1]] = match[2].trim();
     }
+
+    // 补充缺失章节
+    const defaults = ['亮点', '缺点', '成功要素', '核心问题', '优化方向'];
+    for (const key of defaults) {
+      if (!sections[key]) {
+        sections[key] = '（该部分 AI 未生成，请手动补充）';
+      }
+    }
+
     return sections;
   }
 

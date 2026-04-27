@@ -11,22 +11,30 @@ class AIService {
   async generateSuggestions(projectName, accounts) {
     const prompt = this.buildPrompt(projectName, accounts);
 
-    // 优先使用 Moonshot
-    if (config.ai.moonshot.apiKey) {
-      return this.callMoonshot(prompt);
+    const providers = [
+      { name: 'moonshot', apiKey: config.ai.moonshot.apiKey, fn: () => this.callMoonshot(prompt) },
+      { name: 'doubao', apiKey: config.ai.doubao.apiKey, fn: () => this.callDoubao(prompt) },
+      { name: 'deepseek', apiKey: config.ai.deepseek.apiKey, fn: () => this.callDeepSeek(prompt) },
+    ].filter(p => p.apiKey);
+
+    if (providers.length === 0) {
+      throw new Error('No AI provider configured');
     }
 
-    // 其次使用豆包
-    if (config.ai.doubao.apiKey) {
-      return this.callDoubao(prompt);
+    let lastError;
+    for (const provider of providers) {
+      try {
+        logger.info(`Trying AI provider: ${provider.name}`);
+        const result = await provider.fn();
+        logger.info(`AI provider succeeded: ${provider.name}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        logger.warn(`AI provider failed: ${provider.name}`, { error: error.message, status: error.response?.status });
+      }
     }
 
-    // 最后使用 DeepSeek
-    if (config.ai.deepseek.apiKey) {
-      return this.callDeepSeek(prompt);
-    }
-
-    throw new Error('No AI provider configured');
+    throw new Error(`All AI providers failed. Last error: ${lastError?.message}`);
   }
 
   buildPrompt(projectName, accounts) {
@@ -70,7 +78,7 @@ class AIService {
 
       return response.data.choices[0].message.content;
     } catch (error) {
-      logger.error('Moonshot API failed', { error: error.message });
+      logger.error('Moonshot API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
     }
   }
@@ -95,7 +103,7 @@ class AIService {
 
       return response.data.choices[0].message.content;
     } catch (error) {
-      logger.error('Doubao API failed', { error: error.message });
+      logger.error('Doubao API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
     }
   }
@@ -120,7 +128,7 @@ class AIService {
 
       return response.data.choices[0].message.content;
     } catch (error) {
-      logger.error('DeepSeek API failed', { error: error.message });
+      logger.error('DeepSeek API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
       throw error;
     }
   }
@@ -131,56 +139,85 @@ class AIService {
       { role: 'user', content: prompt },
     ];
 
-    if (config.ai.moonshot.apiKey) {
-      return this.callMoonshotWithMessages(messages);
-    }
-    if (config.ai.doubao.apiKey) {
-      return this.callDoubaoWithMessages(messages);
-    }
-    if (config.ai.deepseek.apiKey) {
-      return this.callDeepSeekWithMessages(messages);
+    const providers = [
+      { name: 'moonshot', apiKey: config.ai.moonshot.apiKey, fn: () => this.callMoonshotWithMessages(messages) },
+      { name: 'doubao', apiKey: config.ai.doubao.apiKey, fn: () => this.callDoubaoWithMessages(messages) },
+      { name: 'deepseek', apiKey: config.ai.deepseek.apiKey, fn: () => this.callDeepSeekWithMessages(messages) },
+    ].filter(p => p.apiKey);
+
+    if (providers.length === 0) {
+      throw new Error('No AI provider configured');
     }
 
-    throw new Error('No AI provider configured');
+    let lastError;
+    for (const provider of providers) {
+      try {
+        logger.info(`Trying AI provider: ${provider.name}`);
+        const result = await provider.fn();
+        logger.info(`AI provider succeeded: ${provider.name}`);
+        return result;
+      } catch (error) {
+        lastError = error;
+        logger.warn(`AI provider failed: ${provider.name}`, { error: error.message, status: error.response?.status });
+        // 继续尝试下一个 provider
+      }
+    }
+
+    throw new Error(`All AI providers failed. Last error: ${lastError?.message}`);
   }
 
   async callMoonshotWithMessages(messages) {
-    const response = await axios.post(`${config.ai.moonshot.baseUrl}/chat/completions`, {
-      model: 'moonshot-v1-8k',
-      messages,
-      temperature: 0.7,
-    }, {
-      headers: { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60000,
-      httpsAgent: this.agent,
-    });
-    return response.data.choices[0].message.content;
+    try {
+      const response = await axios.post(`${config.ai.moonshot.baseUrl}/chat/completions`, {
+        model: 'moonshot-v1-8k',
+        messages,
+        temperature: 0.7,
+      }, {
+        headers: { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60000,
+        httpsAgent: this.agent,
+      });
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      logger.error('Moonshot API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
   }
 
   async callDoubaoWithMessages(messages) {
-    const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
-      model: 'doubao-pro-128k',
-      messages,
-      temperature: 0.7,
-    }, {
-      headers: { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60000,
-      httpsAgent: this.agent,
-    });
-    return response.data.choices[0].message.content;
+    try {
+      const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
+        model: 'doubao-pro-128k',
+        messages,
+        temperature: 0.7,
+      }, {
+        headers: { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60000,
+        httpsAgent: this.agent,
+      });
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      logger.error('Doubao API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
   }
 
   async callDeepSeekWithMessages(messages) {
-    const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
-      model: 'deepseek-chat',
-      messages,
-      temperature: 0.7,
-    }, {
-      headers: { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' },
-      timeout: 60000,
-      httpsAgent: this.agent,
-    });
-    return response.data.choices[0].message.content;
+    try {
+      const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
+        model: 'deepseek-chat',
+        messages,
+        temperature: 0.7,
+      }, {
+        headers: { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' },
+        timeout: 60000,
+        httpsAgent: this.agent,
+      });
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      logger.error('DeepSeek API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
+      throw error;
+    }
   }
 }
 

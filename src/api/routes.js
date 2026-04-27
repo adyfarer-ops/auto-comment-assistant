@@ -11,6 +11,7 @@ const webhookRouter = require('../routes/webhook');
 const debugRouter = require('../routes/debug');
 const videoRouter = require('../routes/video');
 const summarizeRouter = require('../routes/summarize');
+const tasksRouter = require('../routes/tasks');
 
 // 健康检查
 router.use('/health', healthRouter);
@@ -41,5 +42,8 @@ router.use('/video', videoRouter);
 
 // 调试 API
 router.use('/debug', debugRouter);
+
+// 任务状态查询 API
+router.use('/tasks', tasksRouter);
 
 module.exports = router;
