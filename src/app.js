@@ -16,6 +16,7 @@ const projectService = require('./services/project-service');
 const syncService = require('./services/sync-service');
 const weeklyReportService = require('./services/weekly-report-service');
 const reportService = require('./services/report-service');
+const logService = require('./services/log-service');
 
 const app = express();
 
@@ -25,6 +26,7 @@ projectService.setProjectMgmtAppToken(projectMgmtAppToken);
 syncService.setProjectMgmtAppToken(projectMgmtAppToken);
 weeklyReportService.setProjectMgmtAppToken(projectMgmtAppToken);
 reportService.setProjectMgmtAppToken(projectMgmtAppToken);
+logService.setProjectMgmtAppToken(projectMgmtAppToken);
 
 app.use(helmet());
 app.use(cors());
