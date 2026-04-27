@@ -140,7 +140,46 @@ class ReportService {
     return 'TK';
   }
 
-  async createFeishuDoc(projectName, blocks) {
+  _sanitizeBlocks(blocks) {
+    return blocks.map(b => {
+      if (b.block_type === 2 && b.text?.elements) {
+        b.text.elements = b.text.elements.map(e => {
+          if (e.text_run?.content) {
+            e.text_run.content = e.text_run.content
+              .replace(/\r/g, '')
+              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+          }
+          return e;
+        }).filter(e => e.text_run?.content?.length > 0 || e.text_run?.content === undefined);
+      }
+      return b;
+    }).filter(b => {
+      if (b.block_type === 2 && b.text?.elements) {
+        return b.text.elements.length > 0;
+      }
+      return true;
+    });
+  }
+
+  async _writeBlocksInChunks(documentId, blocks, token) {
+    const chunkSize = 50;
+    for (let i = 0; i < blocks.length; i += chunkSize) {
+      const chunk = blocks.slice(i, i + chunkSize);
+      try {
+        await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
+          children: chunk,
+          index: i,
+        }, {
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+      } catch (error) {
+        logger.error('Docx chunk write failed', { index: i, chunkSize: chunk.length, error: error.message });
+        throw error;
+      }
+    }
+  }
+
+  async createFeishuDoc(projectName, docBlocks) {
     try {
       const token = await feishuAuth.getAppToken();
 
@@ -157,13 +196,11 @@ class ReportService {
 
       const documentId = createRes.data.data.document.document_id;
 
-      // 批量写入 blocks
-      await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
-        children: blocks,
-        index: 0,
-      }, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
+      // 清洗 blocks
+      const sanitized = this._sanitizeBlocks(docBlocks);
+
+      // 分块写入 blocks
+      await this._writeBlocksInChunks(documentId, sanitized, token);
 
       logger.info('Review report doc created', { documentId });
 

@@ -172,7 +172,8 @@ module.exports = {
       blocks.push(this.bold('2）内容分析'));
       blocks.push(this.bold('a. 爆款案例解构'));
       if (acc.topWork) {
-        blocks.push(this.text(`链接：${acc.topWork.link || ''}`));
+        const cleanLink = (acc.topWork.link || '').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+        blocks.push(this.text(`链接：${cleanLink}`));
         blocks.push(this.text(`内容简述：${acc.topWork.title || ''}`));
         blocks.push(this.text(`播放量：${acc.topWork.playCount?.toLocaleString() || 0}`));
         blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
@@ -180,11 +181,14 @@ module.exports = {
       blocks.push(this.bold('b. 低播放内容分析'));
       blocks.push(this.table(
         ['帖子', '浏览量', '原因分析'],
-        acc.lowWorks.map(w => [
-          w.title?.slice(0, 30) || '',
-          String(w.playCount || 0),
-          `链接：${w.link?.slice(0, 60) || ''}`,
-        ])
+        acc.lowWorks.map(w => {
+          const cleanLink = (w.link || '').replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+          return [
+            w.title?.slice(0, 30) || '',
+            String(w.playCount || 0),
+            `链接：${cleanLink.slice(0, 60)}`,
+          ];
+        })
       ));
 
       // 3）增长情况及原因

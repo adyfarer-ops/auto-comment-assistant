@@ -223,9 +223,17 @@ ${accountLines}
       blocks.push(this.text(para));
     }
 
+    // 过滤空 content block
+    const validBlocks = blocks.filter(b => {
+      if (b.block_type === 2 && b.text?.elements) {
+        return b.text.elements.some(e => e.text_run?.content?.length > 0);
+      }
+      return true;
+    });
+
     // 批量写入 blocks
     await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
-      children: blocks,
+      children: validBlocks,
       index: 0,
     }, {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
