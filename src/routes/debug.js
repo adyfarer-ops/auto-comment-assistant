@@ -24,10 +24,13 @@ router.get('/health/detailed', async (req, res) => {
   }
 
   try {
-    const result = await tikhubApi.request('GET', '/api/v1/health');
-    checks.tikhub = result.status === 'ok' || result.code === 0;
+    await tikhubApi.request('GET', '/api/v1/tiktok/web/fetch_user_profile', { uniqueId: 'tiktok' });
+    checks.tikhub = true;
   } catch (error) {
-    logger.warn('TikHub health check failed', { error: error.message });
+    checks.tikhub = error.response?.status === 404 || error.response?.status === 429;
+    if (!checks.tikhub) {
+      logger.warn('TikHub health check failed', { error: error.message });
+    }
   }
 
   try {
