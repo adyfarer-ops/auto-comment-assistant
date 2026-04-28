@@ -82,7 +82,7 @@ class WeeklyReportService {
       for (let i = headerRowIndex + 1; i < values.length; i++) {
         const row = values[i];
         if (!row || row.every(cell => !cell)) {
-          if (i + 1 < values.length) {
+          if (i + 1 < values.length && values[i + 1]) {
             const nextFirst = String(values[i + 1][0] || '');
             if (opsKeywords.some(k => nextFirst.includes(k))) {
               break;
@@ -540,7 +540,19 @@ ${accountLines}
       return;
     }
 
-    // 3. 组装新周期数据
+    // 3. 组装并写入新周期数据
+    const { rows, maxCol } = this._buildCycleRows(template, reportData);
+    try {
+      const endRow = rows.length;
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
+      logger.info('Weekly report cycle block written to sheet top', { sheetToken, accountCount });
+    } catch (error) {
+      logger.error('Failed to write cycle block to sheet', { sheetToken, error: error.message });
+      throw error;
+    }
+  }
+
+  _buildCycleRows(template, reportData) {
     const periodTitle = this.formatPeriodTitle(reportData.startDate, reportData.endDate);
     const rows = [];
 
@@ -566,6 +578,7 @@ ${accountLines}
     };
 
     const maxCol = Math.max(...Object.values(colIndex).filter(v => v >= 0)) + 1;
+    const accountCount = template.accounts.length;
 
     for (let i = 0; i < accountCount; i++) {
       const tmpl = template.accounts[i];
@@ -610,15 +623,7 @@ ${accountLines}
 
     rows.push([]);
 
-    // 4. 批量写入
-    try {
-      const endRow = rows.length;
-      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
-      logger.info('Weekly report cycle block written to sheet top', { sheetToken, periodTitle, accountCount });
-    } catch (error) {
-      logger.error('Failed to write cycle block to sheet', { sheetToken, error: error.message });
-      throw error;
-    }
+    return { rows, maxCol };
   }
 
   _colIndexToLetter(index) {
@@ -634,13 +639,10 @@ ${accountLines}
   async _fallbackWriteToSpreadsheet(sheetToken, reportData, template) {
     logger.warn('Using fallback full-rewrite for weekly report sheet', { sheetToken });
     const sheetName = 'Sheet1';
-    const periodTitle = this.formatPeriodTitle(reportData.startDate, reportData.endDate);
-    const headers = template.headers || ['账号编号', '账号类型', '负责供应商', '区域', '内容类型', '平台', 'userid', '账号名称', '账号链接', '总发布数量', '总播放量', '稿均', '增粉量'];
-    const rows = [];
-    rows.push([periodTitle]);
-    rows.push([]);
-    rows.push(headers);
-    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:M${rows.length}`, rows);
+    const { rows, maxCol } = this._buildCycleRows(template, reportData);
+    const endRow = rows.length;
+    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
+    logger.info('Fallback weekly report cycle block written', { sheetToken, accountCount: template.accounts.length });
   }
 
   async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink, versionStart, versionEnd, weeklyStart, weeklyEnd) {
@@ -665,9 +667,10 @@ ${accountLines}
         // 只统计数据状态正常的记录
         if (r.fields?.['数据状态'] === '已删除') continue;
 
-        // 时间过滤：优先按周报周期，其次按版本周期
-        const filterStart = weeklyStart || versionStart;
-        const filterEnd = weeklyEnd || versionEnd;
+        // 时间过滤：优先按周报周期（成对使用），其次按版本周期
+        const useWeekly = weeklyStart && weeklyEnd;
+        const filterStart = useWeekly ? weeklyStart : versionStart;
+        const filterEnd = useWeekly ? weeklyEnd : versionEnd;
 
         if (filterStart || filterEnd) {
           const publishTimeField = r.fields?.['发布时间'];
