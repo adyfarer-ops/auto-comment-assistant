@@ -68,6 +68,10 @@ class SyncService {
 
         await this.updateProjectStats(planTableId, projectRecord);
 
+        if (totalErrors > 0 && totalWorks === 0) {
+          throw new Error(`${totalErrors} 个账号同步全部失败，最近错误：API 余额不足或授权失效，请检查配置后重试`);
+        }
+
         logger.info('Project sync completed', { projectName, accountsCount: accounts.length, totalWorks, totalErrors, traceId });
         await logService.logSyncSuccess(projectName, {
           masterTableId: planTableId,
@@ -79,7 +83,7 @@ class SyncService {
         });
 
         try {
-          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+          await notifyService.sendSyncResult(projectName, totalErrors > 0 ? '部分失败' : '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
         } catch (notifyError) {
           logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
         }
@@ -289,6 +293,10 @@ class SyncService {
 
         const versionProgress = this.calculateVersionProgress(projectRecord.fields);
 
+        if (totalErrors > 0 && totalWorks === 0) {
+          throw new Error(`${totalErrors} 个账号同步全部失败，最近错误：TikHub API 余额不足(402)，请充值后重试`);
+        }
+
         logger.info('Incremental sync completed', { projectName, totalWorks, totalErrors, traceId });
         await logService.logSyncSuccess(projectName, {
           masterTableId: planTableId,
@@ -312,7 +320,8 @@ class SyncService {
               const day = String(date.getDate()).padStart(2, '0');
               return `${y}/${m}/${day}`;
             };
-            await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource, startDate: fmtDate(startDate), endDate: fmtDate(endDate), versionProgress, accountStats });
+            const syncStatus = totalErrors > 0 ? '部分失败' : '成功';
+            await notifyService.sendSyncResult(projectName, syncStatus, { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource, startDate: fmtDate(startDate), endDate: fmtDate(endDate), versionProgress, accountStats });
           } catch (notifyError) {
             logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
           }
@@ -533,6 +542,10 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402) {
+            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
+          }
           if (platformCode === 'DY') {
             logger.warn('Douyin fetch failed, returning empty works', { username, error: error.message });
           } else {
@@ -577,6 +590,10 @@ class SyncService {
             }
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402 || status === 403) {
+            throw new Error(`YouTube API 授权/余额不足(${status})，请检查配置后重试: ${error.message}`);
+          }
           logger.error('YouTube API failed after retries, returning partial works', { username, error: error.message, platformCode: 'YTB', fetchedWorks: works.length });
         }
         break;
@@ -615,6 +632,10 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402) {
+            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
+          }
           logger.error('Instagram API failed after retries, returning partial works', { username, error: error.message, platformCode: 'INS', fetchedWorks: works.length });
         }
         break;
@@ -655,6 +676,10 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402) {
+            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
+          }
           logger.error('X API failed after retries, returning partial works', { username, error: error.message, platformCode: 'X', fetchedWorks: works.length });
         }
         break;
@@ -693,6 +718,10 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402) {
+            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
+          }
           logger.error('Reddit API failed after retries, returning partial works', { username, error: error.message, platformCode: 'RD', fetchedWorks: works.length });
         }
         break;
@@ -728,6 +757,10 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
+          const status = error.response?.status;
+          if (status === 402) {
+            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
+          }
           logger.error('Facebook API failed after retries, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
         }
         break;
