@@ -178,6 +178,9 @@ module.exports = {
         blocks.push(this.text(`内容简述：${acc.topWork.title || ''}`));
         blocks.push(this.text(`播放量：${acc.topWork.playCount?.toLocaleString() || 0}`));
         blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
+        if (acc.topWork.videoAnalysis) {
+          blocks.push(this.text(`视频画面分析：${acc.topWork.videoAnalysis}`));
+        }
       }
       blocks.push(this.bold('b. 低播放内容分析'));
       blocks.push(this.table(

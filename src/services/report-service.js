@@ -4,6 +4,8 @@ const feishuAuth = require('./feishu-auth');
 const aiService = require('./ai-service');
 const templateRegistry = require('../templates/review-report/template-registry');
 const tableResolver = require('./table-resolver');
+const videoExtractionService = require('./video-extraction-service');
+const videoAnalysisService = require('./video-analysis-service');
 const logger = require('../utils/logger');
 
 class ReportService {
@@ -38,6 +40,9 @@ class ReportService {
 
     // 获取各账号的作品详情
     const worksMap = await this.fetchWorksForAccounts(fields['项目名称'], accounts);
+
+    // 对各账号 Top 作品进行视频画面分析
+    await this._analyzeTopWorks(worksMap);
 
     // 构建报告数据结构（模板特定）
     const reportData = template.buildReportData(
@@ -102,7 +107,7 @@ class ReportService {
         worksMap.set(account.record_id, works.map(w => ({
           workId: w.fields['作品ID'],
           title: w.fields['作品标题'],
-          link: w.fields['作品链接'],
+          link: this._extractLink(w.fields['作品链接']),
           publishTime: w.fields['发布时间'],
           playCount: parseInt(w.fields['播放量']) || 0,
           diggCount: parseInt(w.fields['点赞数']) || 0,
@@ -147,6 +152,41 @@ class ReportService {
     if (upper.includes('RD')) return 'RD';
     if (upper.includes('FB')) return 'FB';
     return 'TK';
+  }
+
+  async _analyzeTopWorks(worksMap) {
+    for (const [recordId, works] of worksMap.entries()) {
+      if (!works || works.length === 0) continue;
+
+      const topWork = works.reduce((max, w) => ((w.playCount || 0) > (max.playCount || 0) ? w : max), works[0]);
+      if (!topWork || !topWork.link) continue;
+
+      try {
+        const extracted = await videoExtractionService.extractVideoUrl(topWork.link);
+        if (!extracted || !extracted.videoUrl) {
+          logger.warn('No video URL extracted for top work', { title: topWork.title?.slice(0, 40) });
+          continue;
+        }
+
+        const analysis = await videoAnalysisService.analyzeVideoDirect(extracted.videoUrl, {
+          prompt: '请分析这个短视频的画面风格、主要元素、节奏感、氛围，并给出内容运营建议。',
+        });
+
+        topWork.videoAnalysis = analysis;
+        logger.info('Video analysis completed for top work', { title: topWork.title?.slice(0, 40), playCount: topWork.playCount });
+      } catch (error) {
+        logger.warn('Video analysis failed for top work', { title: topWork.title?.slice(0, 40), error: error.message });
+        topWork.videoAnalysis = null;
+      }
+    }
+  }
+
+  _extractLink(value) {
+    if (!value) return '';
+    if (typeof value === 'object') {
+      return value.link || value.url || '';
+    }
+    return String(value);
   }
 
   _sanitizeBlocks(blocks) {

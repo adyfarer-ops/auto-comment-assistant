@@ -109,6 +109,42 @@ class VideoAnalysisService {
     });
   }
 
+  async analyzeVideoDirect(videoUrl, options = {}) {
+    const prompt = options.prompt || '请分析这个视频的内容，描述画面风格、主要元素、氛围、节奏，并给出内容运营建议。';
+
+    const messages = [
+      { role: 'system', content: '你是一位资深的多模态内容分析师，擅长从视频中提取视觉信息并生成专业的内容分析。' },
+      { role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'video_url', video_url: { url: videoUrl } },
+      ]},
+    ];
+
+    try {
+      const response = await axios.post(
+        `${config.ai.videoAnalysis.baseUrl}/chat/completions`,
+        {
+          model: 'doubao-seed-2-0-pro-260215',
+          messages,
+          max_tokens: 2048,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${config.ai.videoAnalysis.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 180000,
+          httpsAgent: this.agent,
+        }
+      );
+
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      logger.error('Direct video analysis failed', { videoUrl: videoUrl.slice(0, 80), error: error.message });
+      throw error;
+    }
+  }
+
   async callVisionAI(imagePaths, customPrompt) {
     const prompt = customPrompt || '请分析这张图片的内容，描述画面中的主要元素、风格、氛围，并给出适合社交媒体传播的标题建议。';
 
@@ -127,7 +163,7 @@ class VideoAnalysisService {
       const response = await axios.post(
         `${config.ai.videoAnalysis.baseUrl}/chat/completions`,
         {
-          model: 'doubao-vision-pro-32k',
+          model: 'doubao-seed-2-0-pro-260215',
           messages,
           max_tokens: 2048,
         },

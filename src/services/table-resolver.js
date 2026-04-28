@@ -14,6 +14,10 @@ class TableResolver {
   }
 
   async resolveDetailTable(projectName, accountName, platformCode) {
+    if (!accountName) {
+      logger.warn('Account name is null, skipping detail table resolve');
+      return null;
+    }
     const prefix = projectName.split('-')[0];
     const normalizedAccount = accountName.replace(/\s+/g, '');
     const shortName = `${prefix}-${normalizedAccount}${platformCode}-作品详情`;

@@ -110,17 +110,6 @@ router.post('/review-report/generate', async (req, res, next) => {
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
-        const chatId = process.env.NOTIFY_CHAT_ID;
-        if (chatId) {
-          const text = `📊 **${projectName}** 复盘报告已生成\n\n` +
-            `模板类型: ${project.fields['复盘报告模板'] || '默认'}\n` +
-            `traceId: ${traceId}\n` +
-            `时间: ${new Date().toLocaleString('zh-CN')}` +
-            (result.docUrl ? `\n\n📄 文档链接: ${result.docUrl}` : '');
-          await notifyService.sendMessage(chatId, text);
-        } else {
-          logger.warn('NOTIFY_CHAT_ID not set, skipping review report notification');
-        }
       } catch (error) {
         logger.error('Review report generation failed', { traceId, error: error.message });
         await logService.updateLog(reviewLogId, {
@@ -133,10 +122,6 @@ router.post('/review-report/generate', async (req, res, next) => {
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
-        const chatId = process.env.NOTIFY_CHAT_ID;
-        if (chatId) {
-          await notifyService.sendError(chatId, projectName, error);
-        }
       }
     })();
   } catch (error) {

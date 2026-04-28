@@ -174,6 +174,9 @@ module.exports = {
         blocks.push(this.text(`内容简述：${work.title || ''}`));
         blocks.push(this.text(`播放量：${(work.playCount / 10000).toFixed(0)}w`));
         blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
+        if (work.videoAnalysis) {
+          blocks.push(this.text(`视频画面分析：${work.videoAnalysis}`));
+        }
         blocks.push({ block_type: 9 });
       }
 
