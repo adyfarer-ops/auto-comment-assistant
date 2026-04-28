@@ -211,12 +211,15 @@ class SyncService {
             const totalPlayCount = filteredWorks.reduce((sum, w) => sum + (w.playCount || 0), 0);
             const publishedCount = filteredWorks.length;
 
-            if (filteredWorks.length > 0 && detailTableId) {
-              const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id, false);
-              createdCount = syncResult.createdCount || 0;
-              updatedCount = syncResult.updatedCount || 0;
-              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code);
-              totalWorks += filteredWorks.length;
+            if (detailTableId) {
+              if (filteredWorks.length > 0) {
+                const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id, false);
+                createdCount = syncResult.createdCount || 0;
+                updatedCount = syncResult.updatedCount || 0;
+                totalWorks += filteredWorks.length;
+              }
+              // 主表统计始终基于全量作品更新，避免周期过滤导致数据被"删除"
+              await this.updateAccountStats(account, planTableId, works, followersCount, platform.code);
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
