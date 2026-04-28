@@ -813,7 +813,7 @@ class SyncService {
       // 旧表可能把 作品链接 设为 URL 类型、发布时间 设为日期类型，
       // 空字符串或不合法值会导致 FieldConvFail，只传有效值
       if (work.link && (!linkIsUrl || String(work.link).match(/^https?:\/\//))) {
-        fields['作品链接'] = work.link;
+        fields['作品链接'] = linkIsUrl ? { link: work.link, text: work.link } : work.link;
       }
       if (work.publishTime) {
         if (publishTimeIsDate) {
