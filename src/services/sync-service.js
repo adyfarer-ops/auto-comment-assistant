@@ -840,10 +840,34 @@ class SyncService {
       '平台': platformCode,
     };
 
+    const baseFieldDefs = {
+      '目前播放量': { field_name: '目前播放量', type: 2, property: { formatter: '0' } },
+      '已发布': { field_name: '已发布', type: 2, property: { formatter: '0' } },
+      '粉丝总量': { field_name: '粉丝总量', type: 2, property: { formatter: '0' } },
+      '平台': { field_name: '平台', type: 1 },
+    };
+
     try {
-      // 获取主表字段列表，过滤掉不存在的字段，避免 FieldNameNotFound 错误（兼容旧表）
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, planTableId);
       const existingFieldNames = new Set((tableFields?.items || []).map(f => f.field_name));
+
+      // 自动创建缺失的 baseFields（兼容旧表升级）
+      for (const fieldName of Object.keys(baseFields)) {
+        if (!existingFieldNames.has(fieldName)) {
+          const fieldDef = baseFieldDefs[fieldName];
+          if (fieldDef) {
+            try {
+              await feishuBitable.createField(this.projectMgmtAppToken, planTableId, fieldDef);
+              existingFieldNames.add(fieldName);
+              logger.info('Auto-created missing field during sync', { fieldName, planTableId });
+              await this._sleep(300);
+            } catch (createError) {
+              logger.warn('Failed to auto-create field during sync', { fieldName, planTableId, error: createError.message });
+            }
+          }
+        }
+      }
+
       const filteredDateStats = {};
       for (const [key, value] of Object.entries(dateStats)) {
         if (existingFieldNames.has(key)) {
