@@ -83,8 +83,8 @@ class NotifyService {
             },
           },
           {
-            tag: 'note',
-            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+            tag: 'div',
+            text: { tag: 'plain_text', content: `⏱️ ${time}` },
           },
         ],
       },
@@ -124,8 +124,8 @@ class NotifyService {
             text: { tag: 'lark_md', content: mdContent },
           },
           {
-            tag: 'note',
-            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+            tag: 'div',
+            text: { tag: 'plain_text', content: `⏱️ ${time}` },
           },
         ],
       },
@@ -170,9 +170,72 @@ class NotifyService {
       return;
     }
 
-    const { traceId, accountsCount, totalWorks, totalErrors, errorMessage, triggerSource, startDate, endDate } = options;
-    const time = new Date().toLocaleString('zh-CN');
+    const { traceId, accountsCount, totalWorks, totalErrors, errorMessage, triggerSource, startDate, endDate, versionProgress, accountStats } = options;
 
+    // 如果提供了详细的账号统计，使用旧项目格式的文本通知
+    if (status === '成功' && accountStats && accountStats.length > 0) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const dateStr = `${year}年${month}月${day}日`;
+      const progressPercent = versionProgress !== undefined && versionProgress !== null
+        ? (versionProgress * 100).toFixed(2)
+        : '0.00';
+
+      let header = projectName;
+      if (startDate && endDate) {
+        header += `（${startDate} ~ ${endDate}）`;
+      }
+      header += `\n更新日期：${dateStr}  版本进度：${progressPercent}%\n`;
+
+      // 计算视觉宽度（中文字符算2，英文算1），用于空格填充对齐
+      const visualWidth = (str) => {
+        let len = 0;
+        for (const ch of str) {
+          len += (ch.charCodeAt(0) > 127) ? 2 : 1;
+        }
+        return len;
+      };
+
+      const maxNameLen = Math.max(...accountStats.map(s => visualWidth(`${s.accountName}[${s.platformCode}]`)));
+
+      const lines = [];
+      for (const stat of accountStats) {
+        const name = `${stat.accountName}[${stat.platformCode}]`;
+        const nameVisLen = visualWidth(name);
+        const padLen = Math.max(1, maxNameLen - nameVisLen + 4);
+        const padding = ' '.repeat(padLen);
+
+        const publishRate = stat.targetPublished > 0 ? (stat.publishedCount / stat.targetPublished * 100).toFixed(2) : '0.00';
+        const playRate = stat.targetPlayCount > 0 ? (stat.totalPlayCount / stat.targetPlayCount * 100).toFixed(2) : '0.00';
+
+        const playCountStr = stat.totalPlayCount.toLocaleString();
+        const targetPlayStr = stat.targetPlayCount.toLocaleString();
+
+        const line = `${name}${padding}| 发布  ${stat.publishedCount}/${stat.targetPublished}(${publishRate}%) | 播放  ${playCountStr}/${targetPlayStr}(${playRate}%)`;
+        lines.push(line);
+      }
+
+      let suggestions = '\n建议：\n';
+      const lowPublish = accountStats.filter(s => s.targetPublished > 0 && (s.publishedCount / s.targetPublished) < 0.5);
+      const lowPlay = accountStats.filter(s => s.targetPlayCount > 0 && (s.totalPlayCount / s.targetPlayCount) < 0.1);
+
+      if (lowPublish.length > 0) {
+        suggestions += `- 以下账号发布进度不足50%，建议增加发布频率：${lowPublish.map(a => a.accountName).join('、')}\n`;
+      }
+      if (lowPlay.length > 0) {
+        suggestions += `- 以下账号播放量进度不足10%，建议优化内容或加强推广：${lowPlay.map(a => a.accountName).join('、')}\n`;
+      }
+      if (lowPublish.length === 0 && lowPlay.length === 0) {
+        suggestions += '- 各账号运营数据正常，请继续保持当前节奏。\n';
+      }
+
+      const content = header + '\n' + lines.join('\n') + '\n' + suggestions;
+      return this.sendMessage(chatId, content);
+    }
+
+    const time = new Date().toLocaleString('zh-CN');
     let titleText;
     let templateColor;
     let mdContent;
@@ -217,8 +280,8 @@ class NotifyService {
             },
           },
           {
-            tag: 'note',
-            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+            tag: 'div',
+            text: { tag: 'plain_text', content: `⏱️ ${time}` },
           },
         ],
       },

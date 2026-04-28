@@ -156,6 +156,7 @@ class SyncService {
 
       let totalWorks = 0;
       let totalErrors = 0;
+      const accountStats = [];
 
       try {
         const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
@@ -164,6 +165,8 @@ class SyncService {
           const accountFields = account.fields;
           const accountName = accountFields['账号名称'];
           const homeLink = accountFields['主页链接']?.link || accountFields['主页链接'];
+          const targetPublished = parseInt(accountFields['保底条数']) || 0;
+          const targetPlayCount = parseInt(accountFields['目标播放量']) || 0;
 
           if (!homeLink) continue;
 
@@ -204,6 +207,8 @@ class SyncService {
             let skippedCount = 0;
 
             const followersCount = await this.fetchPlatformFollowers(platform.code, username);
+            const totalPlayCount = filteredWorks.reduce((sum, w) => sum + (w.playCount || 0), 0);
+            const publishedCount = filteredWorks.length;
 
             if (filteredWorks.length > 0 && detailTableId) {
               const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
@@ -214,6 +219,15 @@ class SyncService {
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
+
+            accountStats.push({
+              accountName,
+              platformCode: platform.code,
+              publishedCount,
+              targetPublished,
+              totalPlayCount,
+              targetPlayCount,
+            });
 
             if (detailTableId) {
               await logService.logSyncSuccess(projectName, {
@@ -269,6 +283,8 @@ class SyncService {
 
         await this.updateProjectStats(planTableId, projectRecord);
 
+        const versionProgress = this.calculateVersionProgress(projectRecord.fields);
+
         logger.info('Incremental sync completed', { projectName, totalWorks, totalErrors, traceId });
         await logService.logSyncSuccess(projectName, {
           masterTableId: planTableId,
@@ -281,7 +297,16 @@ class SyncService {
         });
 
         try {
-          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
+          const fmtDate = (d) => {
+            if (!d) return '';
+            const date = d instanceof Date ? d : new Date(String(d).replace(/-/g, '/'));
+            if (isNaN(date.getTime())) return String(d);
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${y}/${m}/${day}`;
+          };
+          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource, startDate: fmtDate(startDate), endDate: fmtDate(endDate), versionProgress, accountStats });
         } catch (notifyError) {
           logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
         }
@@ -772,14 +797,18 @@ class SyncService {
       }
     }
 
+    logger.info('Syncing works to detail table', { detailTableId, toCreate: toCreate.length, toUpdate: toUpdate.length, toDelete: toDelete.length });
+
     if (toCreate.length > 0) {
-      await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, toCreate);
+      const createResult = await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, toCreate);
+      logger.info('Detail table batch create completed', { detailTableId, created: toCreate.length, result: createResult ? 'success' : 'empty' });
     }
     if (toCreate.length > 0 && toUpdate.length > 0) {
       await this._sleep(config.sync?.batchInterval || 500);
     }
     if (toUpdate.length > 0) {
-      await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, toUpdate);
+      const updateResult = await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, toUpdate);
+      logger.info('Detail table batch update completed', { detailTableId, updated: toUpdate.length, result: updateResult ? 'success' : 'empty' });
     }
     if (toDelete.length > 0) {
       await this._sleep(config.sync?.batchInterval || 500);
@@ -787,6 +816,7 @@ class SyncService {
         await feishuBitable.deleteRecord(this.projectMgmtAppToken, detailTableId, recordId);
         await this._sleep(100);
       }
+      logger.info('Detail table delete completed', { detailTableId, deleted: toDelete.length });
     }
 
     return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
@@ -805,30 +835,28 @@ class SyncService {
 
     const baseFields = {
       '目前播放量': totalPlayCount,
-      '已发布': String(publishedCount),
+      '已发布': publishedCount,
       '粉丝总量': followersCount,
-      '同步时间': this._formatDateTime(new Date()),
     };
 
     try {
-      await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, {
-        ...baseFields,
-        ...dateStats,
-      });
+      // 获取主表字段列表，过滤掉不存在的日期字段，避免 FieldNameNotFound 错误
+      const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, planTableId);
+      const existingFieldNames = new Set((tableFields?.items || []).map(f => f.field_name));
+      const filteredDateStats = {};
+      for (const [key, value] of Object.entries(dateStats)) {
+        if (existingFieldNames.has(key)) {
+          filteredDateStats[key] = value;
+        }
+      }
+
+      const fieldsToUpdate = { ...baseFields, ...filteredDateStats };
+      await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, fieldsToUpdate);
+      logger.info('Account stats updated', { accountName: account.fields?.['账号名称'], planTableId, dateFieldsCount: Object.keys(filteredDateStats).length });
     } catch (error) {
       const msg = error.message || '';
       const errCode = msg.match(/code[:：]\s*(\d+)/)?.[1] || String(error.code);
-      const isFieldError = errCode === '1254045' || errCode === '1254060' || msg.includes('FieldNameNotFound') || msg.includes('TextFieldConvFail');
-      if (isFieldError) {
-        logger.warn('Date stats field mismatch, falling back to base fields', { accountName: account.fields?.['账号名称'], code: errCode });
-        try {
-          await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, baseFields);
-        } catch (fallbackError) {
-          logger.error('updateAccountStats fallback failed', { accountName: account.fields?.['账号名称'], error: fallbackError.message });
-        }
-      } else {
-        logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: msg, code: errCode });
-      }
+      logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: msg, code: errCode });
     }
   }
 
