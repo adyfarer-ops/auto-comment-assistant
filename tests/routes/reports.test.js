@@ -80,6 +80,15 @@ jest.mock('../../src/services/ai-service', () => ({
   generateSuggestions: jest.fn().mockResolvedValue('AI 建议'),
 }));
 
+jest.mock('../../src/services/notify-service', () => ({
+  sendMessage: jest.fn().mockResolvedValue({}),
+  sendInteractiveCard: jest.fn().mockResolvedValue({}),
+  sendProjectSyncResult: jest.fn().mockResolvedValue({}),
+  sendWeeklyReportResult: jest.fn().mockResolvedValue({}),
+  sendError: jest.fn().mockResolvedValue({}),
+  sendSyncResult: jest.fn().mockResolvedValue({}),
+}));
+
 describe('POST /api/weekly-report/generate', () => {
   it('should generate weekly report', async () => {
     const res = await request(app)
