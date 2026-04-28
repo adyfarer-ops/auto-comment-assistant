@@ -491,9 +491,9 @@ class SyncService {
                   logger.warn('TikHub returned playCount=0, possible data source limitation', { username });
                 }
                 return {
-                  workId: v.aweme_id || v.id || v.video_id,
+                  workId: v.video_id || v.aweme_id || v.id,
                   title: v.desc || v.title || '',
-                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.aweme_id || v.id || v.video_id}`,
+                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.video_id || v.aweme_id || v.id}`,
                   publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
                   playCount: parseInt(stats.play_count) || 0,
                   diggCount: parseInt(stats.digg_count) || 0,
@@ -574,7 +574,7 @@ class SyncService {
               works.push(...items.map(item => {
                 const p = item.node || item;
                 return {
-                  workId: p.id || p.pk || p.code,
+                  workId: p.id || p.shortcode || p.code,
                   title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
                   link: p.link || `https://www.instagram.com/p/${p.code}/`,
                   publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
@@ -615,9 +615,9 @@ class SyncService {
             }
             if (tweetList.length) {
               works.push(...tweetList.map(t => ({
-                workId: t.tweet_id || t.id || t.rest_id,
+                workId: t.id || t.rest_id || t.tweet_id,
                 title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
-                link: `https://x.com/${username}/status/${t.tweet_id || t.id || t.rest_id}`,
+                link: `https://x.com/${username}/status/${t.id || t.rest_id || t.tweet_id}`,
                 publishTime: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : null,
                 playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
                 diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
@@ -748,10 +748,16 @@ class SyncService {
     const now = this._formatDateTime();
     const allRecords = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
     const existingMap = new Map();
+    const duplicateRecordIds = [];
     for (const r of allRecords) {
       const workId = r.fields?.['作品ID'];
       if (workId) {
-        existingMap.set(String(workId), r.record_id);
+        const key = String(workId);
+        if (existingMap.has(key)) {
+          duplicateRecordIds.push(r.record_id);
+        } else {
+          existingMap.set(key, r.record_id);
+        }
       }
     }
 
@@ -789,15 +795,15 @@ class SyncService {
       }
     }
 
-    // 删除不在新数据中的旧记录
-    const toDelete = [];
+    // 删除不在新数据中的旧记录，以及重复记录（旧代码遗留）
+    const toDelete = [...duplicateRecordIds];
     for (const [workId, recordId] of existingMap) {
       if (!processedWorkIds.has(workId)) {
         toDelete.push(recordId);
       }
     }
 
-    logger.info('Syncing works to detail table', { detailTableId, toCreate: toCreate.length, toUpdate: toUpdate.length, toDelete: toDelete.length });
+    logger.info('Syncing works to detail table', { detailTableId, toCreate: toCreate.length, toUpdate: toUpdate.length, toDelete: toDelete.length, duplicates: duplicateRecordIds.length });
 
     if (toCreate.length > 0) {
       const createResult = await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, detailTableId, toCreate);

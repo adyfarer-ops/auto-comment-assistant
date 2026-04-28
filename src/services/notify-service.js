@@ -239,8 +239,24 @@ class NotifyService {
         }
       }
 
-      const content = header + '\n' + lines.join('\n') + '\n' + suggestions;
-      return this.sendMessage(chatId, content);
+      const mdContent = header + '\n```\n' + lines.join('\n') + '\n```\n' + suggestions;
+      const card = {
+        schema: '2.0',
+        config: { wide_screen_mode: true },
+        header: {
+          title: { tag: 'plain_text', content: `📊 同步完成 | ${projectName}` },
+          template: 'green',
+        },
+        body: {
+          elements: [
+            {
+              tag: 'div',
+              text: { tag: 'lark_md', content: mdContent },
+            },
+          ],
+        },
+      };
+      return this.sendInteractiveCard(chatId, card);
     }
 
     const time = new Date().toLocaleString('zh-CN');
