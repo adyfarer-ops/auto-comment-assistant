@@ -83,7 +83,7 @@ class ReportService {
 
     // 更新项目管理表
     await feishuBitable.updateRecord(this.projectMgmtAppToken, 'tblxbkkh03Kw10lI', projectRecord.record_id, {
-      '复盘报告文档': docUrl,
+      '复盘报告文档': { link: docUrl, text: `${fields['项目名称']} 复盘报告` },
     });
 
     return { docUrl, template: templateType };
