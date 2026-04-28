@@ -32,8 +32,8 @@ tableResolver.setProjectMgmtAppToken(projectMgmtAppToken);
 
 app.locals.projectMgmtAppToken = projectMgmtAppToken;
 
-// 启动时修复残留的旧“进行中”日志
-logService.fixStaleLogs().catch((err) => logger.warn('Fix stale logs on startup failed', { error: err.message }));
+// 启动时强制修复所有残留的“进行中”日志（服务重启意味着任务被中断）
+logService.fixStaleLogs(true).catch((err) => logger.warn('Fix stale logs on startup failed', { error: err.message }));
 
 app.use(helmet());
 app.use(cors());

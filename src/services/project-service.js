@@ -209,10 +209,11 @@ class ProjectService {
           continue;
         }
 
-        const expectedName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platform.code}-作品详情`;
-        if (existingDetailNames.has(expectedName)) {
+        const expectedShortName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platform.code}-作品详情`;
+        const expectedFullName = `${detailPrefix}${accountName.replace(/\s+/g, '')}${platformResolver.getPlatformName(platform.code)}-作品详情`;
+        if (existingDetailNames.has(expectedShortName) || existingDetailNames.has(expectedFullName)) {
           result.skipped++;
-          result.details.push({ recordId: record.record_id, accountName, status: 'skipped', reason: 'table exists', tableName: expectedName });
+          result.details.push({ recordId: record.record_id, accountName, status: 'skipped', reason: 'table exists', tableName: expectedShortName });
           continue;
         }
 

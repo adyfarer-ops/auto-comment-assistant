@@ -110,26 +110,27 @@ class LogService {
     return this.logSyncEnd(projectName, '失败', { ...options, errorMessage: error?.message || String(error) });
   }
 
-  async fixStaleLogs(timeoutMs = 30 * 60 * 1000) {
+  async fixStaleLogs(force = false) {
     try {
       const records = await feishuBitable.searchRecords(this.projectMgmtAppToken, this.logTableId, 'CurrentValue.[状态] = "进行中"');
       const now = Date.now();
+      const timeoutMs = 30 * 60 * 1000;
       let fixed = 0;
       for (const record of records) {
         const fields = record.fields || {};
         const startTime = fields['开始时间'];
-        if (startTime && (now - startTime) > timeoutMs) {
+        if (force || (startTime && (now - startTime) > timeoutMs)) {
           await this.updateLog(record.record_id, {
             '状态': '异常终止',
             '结束时间': now,
-            '耗时': this.formatDuration(now - startTime),
-            '错误信息': '任务超时或系统中断',
+            '耗时': startTime ? this.formatDuration(now - startTime) : '',
+            '错误信息': force ? '服务重启导致任务中断' : '任务超时或系统中断',
           });
           fixed++;
         }
       }
       if (fixed > 0) {
-        logger.info('Fixed stale logs', { fixed, totalChecked: records.length });
+        logger.info('Fixed stale logs', { fixed, totalChecked: records.length, force });
       }
     } catch (error) {
       logger.error('Failed to fix stale logs', { error: error.message });

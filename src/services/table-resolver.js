@@ -1,4 +1,5 @@
 const feishuBitable = require('./feishu-bitable');
+const platformResolver = require('./platform-resolver');
 const logger = require('../utils/logger');
 
 class TableResolver {
@@ -15,25 +16,30 @@ class TableResolver {
   async resolveDetailTable(projectName, accountName, platformCode) {
     const prefix = projectName.split('-')[0];
     const normalizedAccount = accountName.replace(/\s+/g, '');
-    const tableName = `${prefix}-${normalizedAccount}${platformCode}-作品详情`;
+    const shortName = `${prefix}-${normalizedAccount}${platformCode}-作品详情`;
+    const fullName = `${prefix}-${normalizedAccount}${platformResolver.getPlatformName(platformCode)}-作品详情`;
 
-    const cached = this.getCached(tableName);
+    const cached = this.getCached(shortName) || this.getCached(fullName);
     if (cached) return cached;
 
     try {
       const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
       const items = tables.items || tables;
-      const matched = items.find(t => t.name === tableName);
+      let matched = items.find(t => t.name === shortName);
+      if (!matched) {
+        matched = items.find(t => t.name === fullName);
+      }
 
       if (matched) {
-        this.setCached(tableName, matched.table_id);
+        this.setCached(shortName, matched.table_id);
+        this.setCached(fullName, matched.table_id);
         return matched.table_id;
       }
 
-      logger.warn('Detail table not found', { tableName });
+      logger.warn('Detail table not found', { shortName, fullName });
       return null;
     } catch (error) {
-      logger.error('Failed to resolve detail table', { tableName, error: error.message });
+      logger.error('Failed to resolve detail table', { shortName, fullName, error: error.message });
       return null;
     }
   }

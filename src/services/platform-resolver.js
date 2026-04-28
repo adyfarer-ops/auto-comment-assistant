@@ -34,6 +34,11 @@ class PlatformResolver {
     return null;
   }
 
+  getPlatformName(code) {
+    const platform = PLATFORM_PATTERNS.find(p => p.code === code);
+    return platform ? platform.name : code;
+  }
+
   extractUsername(url, platformCode) {
     try {
       const urlObj = new URL(url);

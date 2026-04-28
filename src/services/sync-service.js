@@ -731,22 +731,25 @@ class SyncService {
   }
 
   async getOrCreateDetailTable(projectName, accountName, platformCode) {
-    const tableName = `${projectName.split('-')[0]}-${accountName.replace(/\s+/g, '')}${platformCode}-作品详情`;
+    const prefix = projectName.split('-')[0];
+    const normalizedAccount = accountName.replace(/\s+/g, '');
+    const shortName = `${prefix}-${normalizedAccount}${platformCode}-作品详情`;
+    const fullName = `${prefix}-${normalizedAccount}${platformResolver.getPlatformName(platformCode)}-作品详情`;
 
     try {
       const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
-      const matched = tables.items?.find(t => t.name === tableName);
+      const matched = tables.items?.find(t => t.name === shortName || t.name === fullName);
 
       if (matched) {
-        logger.info('Detail table found', { tableName, tableId: matched.table_id });
+        logger.info('Detail table found', { tableName: matched.name, tableId: matched.table_id });
         return matched.table_id;
       }
 
-      logger.info('Detail table not found, creating', { tableName });
+      logger.info('Detail table not found, creating', { shortName });
       const newTableId = await projectService.createDetailTable(projectName, accountName, platformCode);
       return newTableId;
     } catch (error) {
-      logger.error('Failed to lookup or create detail table', { tableName, error: error.message });
+      logger.error('Failed to lookup or create detail table', { shortName, fullName, error: error.message });
       return null;
     }
   }
