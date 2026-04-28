@@ -33,6 +33,23 @@ class FeishuSpreadsheetService {
     }
   }
 
+  async readValues(spreadsheetToken, range) {
+    const result = await this.request('GET', spreadsheetToken, `/values/${range}`);
+    return result?.valueRange?.values || [];
+  }
+
+  async insertRows(spreadsheetToken, sheetId, startIndex, endIndex) {
+    return this.request('POST', spreadsheetToken, '/dimension-rows', {
+      dimension: {
+        sheetId,
+        majorDimension: 'ROWS',
+        startIndex,
+        endIndex,
+      },
+      inheritStyle: true,
+    });
+  }
+
   async writeValues(spreadsheetToken, range, values) {
     return this.request('PUT', spreadsheetToken, `/values/${range}`, {
       valueRange: {
