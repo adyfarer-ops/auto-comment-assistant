@@ -67,19 +67,17 @@ class WeeklyReportService {
       const responsible = af['负责人'] || '';
       const platform = this.extractPlatform(accountName);
 
-      // 从详情表按周期统计，避免使用主表全量累计数据
-      const periodStats = await this.calculateAccountPeriodStats(
+      // 从详情表统计全量数据（更新后+历史数据），确保和表格一致
+      const detailStats = await this.calculateAccountStatsFromDetail(
         fields['项目名称'],
         accountName,
         platform,
-        af['主页链接'],
-        startDate,
-        endDate
+        af['主页链接']
       );
 
       // 如果详情表统计失败，回退到主表数据
-      const published = periodStats?.published ?? (parseInt(af['已发布']) || 0);
-      const playCount = periodStats?.playCount ?? (parseInt(af['目前播放量']) || 0);
+      const published = detailStats?.published ?? (parseInt(af['已发布']) || 0);
+      const playCount = detailStats?.playCount ?? (parseInt(af['目前播放量']) || 0);
       const completionRate = target > 0 ? (published / target) : (parseFloat(af['发布完成率']) || 0);
 
       reportData.accounts.push({
@@ -145,6 +143,20 @@ class WeeklyReportService {
       logger.info('Project management table updated with weekly report dates');
     } catch (error) {
       logger.error('Failed to update project management table', { error: error.message });
+    }
+
+    // 发送周报生成通知
+    try {
+      await notifyService.sendWeeklyReportResult(reportData.projectName, {
+        accountsCount: reportData.accounts.length,
+        totalPublished: reportData.summary.totalPublished,
+        totalPlayCount: reportData.summary.totalPlayCount,
+        avgCompletionRate: reportData.summary.avgCompletionRate,
+        docUrl,
+      });
+      logger.info('Weekly report notification sent');
+    } catch (error) {
+      logger.error('Failed to send weekly report notification', { error: error.message });
     }
 
     logger.info('Weekly report generated', { summary: reportData.summary });
@@ -326,7 +338,7 @@ ${accountLines}
     ]);
   }
 
-  async calculateAccountPeriodStats(projectName, accountName, platform, homeLink, startDate, endDate) {
+  async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink) {
     try {
       const platformInfo = platformResolver.detectPlatform(homeLink);
       if (!platformInfo) {
@@ -341,39 +353,22 @@ ${accountLines}
       }
 
       const records = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
-      let periodPublished = 0;
-      let periodPlayCount = 0;
+      let totalPublished = 0;
+      let totalPlayCount = 0;
 
       for (const r of records) {
-        const publishTimeField = r.fields?.['发布时间'];
-        if (!publishTimeField) continue;
-
-        // 兼容新旧表：date 类型是数字时间戳，text 类型是字符串
-        let publishTime;
-        if (typeof publishTimeField === 'number') {
-          publishTime = new Date(publishTimeField);
-        } else {
-          publishTime = new Date(String(publishTimeField).replace(/-/g, '/'));
-        }
-        if (isNaN(publishTime.getTime())) continue;
-
-        // 按周期过滤：包含开始和结束日期
-        const dateOnly = new Date(publishTime.getFullYear(), publishTime.getMonth(), publishTime.getDate());
-        const startOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-        const endOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
-
-        if (dateOnly < startOnly || dateOnly > endOnly) continue;
-
-        periodPublished++;
-        periodPlayCount += parseInt(r.fields?.['播放量']) || 0;
+        // 只统计数据状态正常的记录
+        if (r.fields?.['数据状态'] === '已删除') continue;
+        totalPublished++;
+        totalPlayCount += parseInt(r.fields?.['播放量']) || 0;
       }
 
       return {
-        published: periodPublished,
-        playCount: periodPlayCount,
+        published: totalPublished,
+        playCount: totalPlayCount,
       };
     } catch (error) {
-      logger.error('Failed to calculate account period stats', { accountName, error: error.message });
+      logger.error('Failed to calculate account stats from detail table', { accountName, error: error.message });
       return null;
     }
   }
