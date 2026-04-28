@@ -234,11 +234,11 @@ class ReportService {
       }
       // 清洗表格单元格
       if (b.block_type === 15 && b.table_cell?.children) {
-        b.table_cell.children = sanitizeBlock(b.table_cell.children);
+        b.table_cell.children = walkBlocks(b.table_cell.children);
       }
-      // 递归清洗表格子块
+      // 递归清洗子块
       if (b.children && Array.isArray(b.children)) {
-        b.children = sanitizeBlock(b.children);
+        b.children = walkBlocks(b.children);
       }
       return b;
     };
@@ -256,22 +256,55 @@ class ReportService {
     return walkBlocks(blocks);
   }
 
-  async _writeBlocksInChunks(documentId, blocks, token) {
+  async _writeBlocksRecursive(documentId, parentBlockId, blocks, token) {
     const chunkSize = 50;
     for (let i = 0; i < blocks.length; i += chunkSize) {
       const chunk = blocks.slice(i, i + chunkSize);
+
+      // 保存每个 block 的 children，写入时先剥离（飞书 API 不支持一次性嵌套创建 table_cell 等）
+      const childrenMap = new Map(); // chunk 内索引 -> children
+      const strippedChunk = chunk.map((b, idx) => {
+        if (b.children && Array.isArray(b.children) && b.children.length > 0) {
+          childrenMap.set(idx, b.children);
+          const { children, ...rest } = b;
+          return rest;
+        }
+        return b;
+      });
+
       try {
-        await axios.post(`https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
-          children: chunk,
-          index: i,
-        }, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
+        const res = await axios.post(
+          `https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${parentBlockId}/children`,
+          { children: strippedChunk, index: i },
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+
+        if (res.data.code !== 0) {
+          const responseBody = res.data;
+          logger.error('Docx chunk write failed', {
+            index: i,
+            chunkSize: strippedChunk.length,
+            parentBlockId,
+            responseBody: JSON.stringify(responseBody || {}),
+          });
+          throw new Error(`Docx chunk write failed: ${res.data.msg}`);
+        }
+
+        // 递归写入 children：返回的 children 数组与请求一一对应
+        const createdBlocks = res.data.data?.children || [];
+        for (let idx = 0; idx < createdBlocks.length; idx++) {
+          const created = createdBlocks[idx];
+          const childBlocks = childrenMap.get(idx);
+          if (childBlocks && childBlocks.length > 0 && created.block_id) {
+            await this._writeBlocksRecursive(documentId, created.block_id, childBlocks, token);
+          }
+        }
       } catch (error) {
         const responseBody = error.response?.data;
         logger.error('Docx chunk write failed', {
           index: i,
-          chunkSize: chunk.length,
+          chunkSize: strippedChunk.length,
+          parentBlockId,
           error: error.message,
           responseBody: JSON.stringify(responseBody || {}),
         });
@@ -300,8 +333,8 @@ class ReportService {
       // 清洗 blocks
       const sanitized = this._sanitizeBlocks(docBlocks);
 
-      // 分块写入 blocks
-      await this._writeBlocksInChunks(documentId, sanitized, token);
+      // 递归写入 blocks（支持 table -> table_cell 嵌套）
+      await this._writeBlocksRecursive(documentId, documentId, sanitized, token);
 
       logger.info('Review report doc created', { documentId });
 
