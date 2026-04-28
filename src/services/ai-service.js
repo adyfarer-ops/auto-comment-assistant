@@ -86,7 +86,7 @@ class AIService {
   async callDoubao(prompt) {
     try {
       const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
-        model: 'doubao-pro-128k',
+        model: config.ai.doubao.model,
         messages: [
           { role: 'system', content: '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。' },
           { role: 'user', content: prompt },
@@ -111,7 +111,7 @@ class AIService {
   async callDeepSeek(prompt) {
     try {
       const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
-        model: 'deepseek-chat',
+        model: config.ai.deepseek.model,
         messages: [
           { role: 'system', content: '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。' },
           { role: 'user', content: prompt },
@@ -187,7 +187,7 @@ class AIService {
   async callDoubaoWithMessages(messages) {
     try {
       const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
-        model: 'doubao-pro-128k',
+        model: config.ai.doubao.model,
         messages,
         temperature: 0.7,
       }, {
@@ -205,7 +205,7 @@ class AIService {
   async callDeepSeekWithMessages(messages) {
     try {
       const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
-        model: 'deepseek-chat',
+        model: config.ai.deepseek.model,
         messages,
         temperature: 0.7,
       }, {

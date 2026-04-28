@@ -28,10 +28,12 @@ module.exports = {
     doubao: {
       apiKey: process.env.DOUBAO_API_KEY,
       baseUrl: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+      model: process.env.DOUBAO_MODEL || 'doubao-seed-2-0-lite-260215',
     },
     deepseek: {
       apiKey: process.env.DEEPSEEK_API_KEY,
-      baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
+      baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     },
     videoAnalysis: {
       apiKey: process.env.VIDEO_ANALYSIS_API_KEY,
