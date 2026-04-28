@@ -32,7 +32,13 @@ class SyncService {
 
   _formatDateTime(date) {
     const d = date || new Date();
-    return d.getTime();
+    // 返回飞书日期字段兼容格式：yyyy/MM/dd HH:mm
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${min}`;
   }
 
   async syncProject(projectRecord, options = {}) {
@@ -801,7 +807,9 @@ class SyncService {
         fields['作品链接'] = work.link;
       }
       if (work.publishTime) {
-        fields['发布时间'] = work.publishTime;
+        // 旧表发布时间可能是日期类型，统一转成 yyyy/MM/dd 格式兼容飞书日期字段
+        const pt = String(work.publishTime).replace(/-/g, '/');
+        fields['发布时间'] = pt;
       }
       const recordId = existingMap.get(String(work.workId));
       if (recordId) {
