@@ -5,6 +5,8 @@ const feishuAuth = require('./feishu-auth');
 const aiService = require('./ai-service');
 const notifyService = require('./notify-service');
 const syncService = require('./sync-service');
+const platformResolver = require('./platform-resolver');
+const tableResolver = require('./table-resolver');
 const logger = require('../utils/logger');
 
 class WeeklyReportService {
@@ -60,18 +62,34 @@ class WeeklyReportService {
 
     for (const account of accounts) {
       const af = account.fields;
-      const published = parseInt(af['已发布']) || 0;
-      const playCount = parseInt(af['目前播放量']) || 0;
-      const completionRate = parseFloat(af['发布完成率']) || 0;
+      const accountName = af['账号名称'];
+      const target = parseInt(af['保底条数']) || 0;
+      const responsible = af['负责人'] || '';
+      const platform = this.extractPlatform(accountName);
+
+      // 从详情表按周期统计，避免使用主表全量累计数据
+      const periodStats = await this.calculateAccountPeriodStats(
+        fields['项目名称'],
+        accountName,
+        platform,
+        af['主页链接'],
+        startDate,
+        endDate
+      );
+
+      // 如果详情表统计失败，回退到主表数据
+      const published = periodStats?.published ?? (parseInt(af['已发布']) || 0);
+      const playCount = periodStats?.playCount ?? (parseInt(af['目前播放量']) || 0);
+      const completionRate = target > 0 ? (published / target) : (parseFloat(af['发布完成率']) || 0);
 
       reportData.accounts.push({
-        name: af['账号名称'],
-        platform: this.extractPlatform(af['账号名称']),
+        name: accountName,
+        platform,
         published,
-        target: parseInt(af['保底条数']) || 0,
+        target,
         playCount,
         completionRate: (completionRate * 100).toFixed(2) + '%',
-        responsible: af['负责人'] || '',
+        responsible,
       });
 
       reportData.summary.totalPublished += published;
@@ -306,6 +324,58 @@ ${accountLines}
       ['总发布数', reportData.summary.totalPublished, '', '', '', '', ''],
       ['总播放量', reportData.summary.totalPlayCount, '', '', '', '', ''],
     ]);
+  }
+
+  async calculateAccountPeriodStats(projectName, accountName, platform, homeLink, startDate, endDate) {
+    try {
+      const platformInfo = platformResolver.detectPlatform(homeLink);
+      if (!platformInfo) {
+        logger.warn('Cannot detect platform for weekly report stats', { accountName, homeLink });
+        return null;
+      }
+
+      const detailTableId = await tableResolver.resolveDetailTable(projectName, accountName, platformInfo.code);
+      if (!detailTableId) {
+        logger.warn('Detail table not found for weekly report stats', { projectName, accountName, platform: platformInfo.code });
+        return null;
+      }
+
+      const records = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
+      let periodPublished = 0;
+      let periodPlayCount = 0;
+
+      for (const r of records) {
+        const publishTimeField = r.fields?.['发布时间'];
+        if (!publishTimeField) continue;
+
+        // 兼容新旧表：date 类型是数字时间戳，text 类型是字符串
+        let publishTime;
+        if (typeof publishTimeField === 'number') {
+          publishTime = new Date(publishTimeField);
+        } else {
+          publishTime = new Date(String(publishTimeField).replace(/-/g, '/'));
+        }
+        if (isNaN(publishTime.getTime())) continue;
+
+        // 按周期过滤：包含开始和结束日期
+        const dateOnly = new Date(publishTime.getFullYear(), publishTime.getMonth(), publishTime.getDate());
+        const startOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+
+        if (dateOnly < startOnly || dateOnly > endOnly) continue;
+
+        periodPublished++;
+        periodPlayCount += parseInt(r.fields?.['播放量']) || 0;
+      }
+
+      return {
+        published: periodPublished,
+        playCount: periodPlayCount,
+      };
+    } catch (error) {
+      logger.error('Failed to calculate account period stats', { accountName, error: error.message });
+      return null;
+    }
   }
 
   extractPlatform(accountName) {
