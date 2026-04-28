@@ -732,8 +732,10 @@ class SyncService {
 
     const toCreate = [];
     const toUpdate = [];
+    const processedWorkIds = new Set();
 
     for (const work of works) {
+      processedWorkIds.add(String(work.workId));
       const fields = {
         '作品ID': String(work.workId),
         '作品标题': work.title || '',
@@ -759,6 +761,13 @@ class SyncService {
         toUpdate.push({ recordId, fields });
       } else {
         toCreate.push(fields);
+      }
+    }
+
+    // 标记不在新数据中的旧记录为已删除
+    for (const [workId, recordId] of existingMap) {
+      if (!processedWorkIds.has(workId)) {
+        toUpdate.push({ recordId, fields: { '数据状态': '已删除', '同步时间': now } });
       }
     }
 
