@@ -229,15 +229,21 @@ class ReportService {
         b.heading3.elements = filterElements(b.heading3.elements.map(sanitizeElement));
       }
       // 清洗列表块
-      if (b.block_type === 6 && b.bullet?.elements) {
+      if (b.block_type === 12 && b.bullet?.elements) {
         b.bullet.elements = filterElements(b.bullet.elements.map(sanitizeElement));
       }
-      // 清洗表格单元格
-      if (b.block_type === 15 && b.table_cell?.children) {
+      // 清洗表格单元格（兼容旧结构）
+      if (b.block_type === 32 && b.table_cell?.children) {
         b.table_cell.children = walkBlocks(b.table_cell.children);
       }
-      // 递归清洗子块
-      if (b.children && Array.isArray(b.children)) {
+      // 清洗表格块的单元格内容（新结构：children 是数组的数组）
+      if (b.block_type === 31 && b.children && Array.isArray(b.children)) {
+        b.children = b.children.map(cellBlocks =>
+          Array.isArray(cellBlocks) ? walkBlocks(cellBlocks) : cellBlocks
+        );
+      }
+      // 递归清洗普通子块
+      if (b.children && Array.isArray(b.children) && b.block_type !== 31) {
         b.children = walkBlocks(b.children);
       }
       return b;
@@ -263,7 +269,14 @@ class ReportService {
 
       // 保存每个 block 的 children，写入时先剥离（飞书 API 不支持一次性嵌套创建 table_cell 等）
       const childrenMap = new Map(); // chunk 内索引 -> children
+      const tableCellsMap = new Map(); // chunk 内索引 -> 表格单元格内容数组
       const strippedChunk = chunk.map((b, idx) => {
+        if (b.block_type === 31 && b.children && Array.isArray(b.children)) {
+          // 表格块：保存单元格内容，写入时不带 children（飞书会自动创建单元格）
+          tableCellsMap.set(idx, b.children);
+          const { children, ...rest } = b;
+          return rest;
+        }
         if (b.children && Array.isArray(b.children) && b.children.length > 0) {
           childrenMap.set(idx, b.children);
           const { children, ...rest } = b;
@@ -301,6 +314,21 @@ class ReportService {
         const createdBlocks = res.data.data?.children || [];
         for (let idx = 0; idx < createdBlocks.length; idx++) {
           const created = createdBlocks[idx];
+
+          // 处理表格单元格内容
+          if (created.block_type === 31 && tableCellsMap.has(idx)) {
+            const cellContents = tableCellsMap.get(idx);
+            const cellBlocks = created.children || [];
+            for (let cellIdx = 0; cellIdx < Math.min(cellBlocks.length, cellContents.length); cellIdx++) {
+              const cellBlock = cellBlocks[cellIdx];
+              const contentBlocks = cellContents[cellIdx];
+              if (cellBlock?.block_id && Array.isArray(contentBlocks) && contentBlocks.length > 0) {
+                await this._writeBlocksRecursive(documentId, cellBlock.block_id, contentBlocks, token);
+              }
+            }
+          }
+
+          // 处理普通嵌套 children
           const childBlocks = childrenMap.get(idx);
           if (childBlocks && childBlocks.length > 0 && created.block_id) {
             logger.info('Recursing into block children', {

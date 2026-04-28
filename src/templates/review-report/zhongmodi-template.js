@@ -120,14 +120,14 @@ module.exports = {
     // 标题
     blocks.push(this.heading1(`${data.projectName} 复盘报告`));
     blocks.push(this.text(`统计周期: ${data.versionPeriod}`));
-    blocks.push({ block_type: 9 }); // divider
+    blocks.push({ block_type: 22, divider: {} }); // divider
 
     // 一、数据总览
     blocks.push(this.heading2('一、数据总览&KPI完成情况'));
     blocks.push(this.text(`总账号数: ${data.totalAccounts}`));
     blocks.push(this.text(`总发布数: ${data.totalPublished}`));
     blocks.push(this.text(`总播放量: ${data.totalPlayCount.toLocaleString()}`));
-    blocks.push({ block_type: 9 });
+    blocks.push({ block_type: 22, divider: {} });
 
     // 二、账号整体运营情况复盘
     blocks.push(this.heading2('二、账号整体运营情况复盘'));
@@ -177,7 +177,7 @@ module.exports = {
         if (work.videoAnalysis) {
           blocks.push(this.text(`视频画面分析：${work.videoAnalysis}`));
         }
-        blocks.push({ block_type: 9 });
+        blocks.push({ block_type: 22, divider: {} });
       }
 
       blocks.push(this.bold('b. 低播放内容分析'));
@@ -197,7 +197,7 @@ module.exports = {
       blocks.push(this.bold('3）核心问题及优化方向'));
       blocks.push(this.text(`核心问题：${aiContent['核心问题'] || '_待AI填充_'}`));
       blocks.push(this.text(`优化方向：${aiContent['优化方向'] || '_待AI填充_'}`));
-      blocks.push({ block_type: 9 });
+      blocks.push({ block_type: 22, divider: {} });
     }
 
     return blocks;
@@ -244,26 +244,19 @@ module.exports = {
   heading3(text) { return { block_type: 5, heading3: { elements: [{ text_run: { content: text || '' } }] } }; },
   text(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '' } }] } }; },
   bold(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '', text_element_style: { bold: true } } }] } }; },
-  bullet(text) { return { block_type: 6, bullet: { elements: [{ text_run: { content: text || '' } }] } }; },
+  bullet(text) { return { block_type: 12, bullet: { elements: [{ text_run: { content: text || '' } }] } }; },
   table(headers, rows) {
     const allRows = [headers, ...rows];
     return {
-      block_type: 14,
+      block_type: 31,
       table: {
         property: {
           row_size: allRows.length,
           column_size: headers.length,
         },
-        table_width: headers.length,
-        table_rows: allRows.length,
-        table_columns: headers.length,
-        merge_info: [],
       },
       children: allRows.flatMap(row =>
-        row.map(cell => ({
-          block_type: 15,
-          table_cell: { children: [{ block_type: 2, text: { elements: [{ text_run: { content: cell } }] } }] },
-        }))
+        row.map(cell => [{ block_type: 2, text: { elements: [{ text_run: { content: cell } }] } }])
       ),
     };
   },
