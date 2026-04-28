@@ -190,24 +190,70 @@ class ReportService {
   }
 
   _sanitizeBlocks(blocks) {
-    return blocks.map(b => {
+    const sanitizeElement = (e) => {
+      if (e.text_run) {
+        if (e.text_run.content == null) {
+          e.text_run.content = '';
+        } else {
+          e.text_run.content = String(e.text_run.content)
+            .replace(/\r/g, '')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
+        }
+      }
+      return e;
+    };
+
+    const filterElements = (elements) => {
+      if (!Array.isArray(elements)) return elements;
+      return elements.filter(e => {
+        if (e.text_run) {
+          return e.text_run.content !== undefined;
+        }
+        return true;
+      });
+    };
+
+    const sanitizeBlock = (b) => {
+      // 清洗普通文本块
       if (b.block_type === 2 && b.text?.elements) {
-        b.text.elements = b.text.elements.map(e => {
-          if (e.text_run?.content) {
-            e.text_run.content = e.text_run.content
-              .replace(/\r/g, '')
-              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$2');
-          }
-          return e;
-        }).filter(e => e.text_run?.content?.length > 0 || e.text_run?.content === undefined);
+        b.text.elements = filterElements(b.text.elements.map(sanitizeElement));
+      }
+      // 清洗标题块
+      if ([3, 4, 5].includes(b.block_type) && b.heading1?.elements) {
+        b.heading1.elements = filterElements(b.heading1.elements.map(sanitizeElement));
+      }
+      if ([3, 4, 5].includes(b.block_type) && b.heading2?.elements) {
+        b.heading2.elements = filterElements(b.heading2.elements.map(sanitizeElement));
+      }
+      if ([3, 4, 5].includes(b.block_type) && b.heading3?.elements) {
+        b.heading3.elements = filterElements(b.heading3.elements.map(sanitizeElement));
+      }
+      // 清洗列表块
+      if (b.block_type === 6 && b.bullet?.elements) {
+        b.bullet.elements = filterElements(b.bullet.elements.map(sanitizeElement));
+      }
+      // 清洗表格单元格
+      if (b.block_type === 15 && b.table_cell?.children) {
+        b.table_cell.children = sanitizeBlock(b.table_cell.children);
+      }
+      // 递归清洗表格子块
+      if (b.children && Array.isArray(b.children)) {
+        b.children = sanitizeBlock(b.children);
       }
       return b;
-    }).filter(b => {
-      if (b.block_type === 2 && b.text?.elements) {
-        return b.text.elements.length > 0;
-      }
-      return true;
-    });
+    };
+
+    const walkBlocks = (arr) => {
+      return arr.map(sanitizeBlock).filter(b => {
+        // 过滤掉空的文本类 block
+        if (b.block_type === 2 && b.text?.elements) {
+          return b.text.elements.length > 0;
+        }
+        return true;
+      });
+    };
+
+    return walkBlocks(blocks);
   }
 
   async _writeBlocksInChunks(documentId, blocks, token) {
@@ -222,7 +268,13 @@ class ReportService {
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         });
       } catch (error) {
-        logger.error('Docx chunk write failed', { index: i, chunkSize: chunk.length, error: error.message });
+        const responseBody = error.response?.data;
+        logger.error('Docx chunk write failed', {
+          index: i,
+          chunkSize: chunk.length,
+          error: error.message,
+          responseBody: JSON.stringify(responseBody || {}),
+        });
         throw error;
       }
     }

@@ -239,12 +239,12 @@ module.exports = {
   },
 
   // Block helpers
-  heading1(text) { return { block_type: 3, heading1: { elements: [{ text_run: { content: text } }] } }; },
-  heading2(text) { return { block_type: 4, heading2: { elements: [{ text_run: { content: text } }] } }; },
-  heading3(text) { return { block_type: 5, heading3: { elements: [{ text_run: { content: text } }] } }; },
-  text(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text } }] } }; },
-  bold(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text, text_element_style: { bold: true } } }] } }; },
-  bullet(text) { return { block_type: 6, bullet: { elements: [{ text_run: { content: text } }] } }; },
+  heading1(text) { return { block_type: 3, heading1: { elements: [{ text_run: { content: text || '' } }] } }; },
+  heading2(text) { return { block_type: 4, heading2: { elements: [{ text_run: { content: text || '' } }] } }; },
+  heading3(text) { return { block_type: 5, heading3: { elements: [{ text_run: { content: text || '' } }] } }; },
+  text(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '' } }] } }; },
+  bold(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '', text_element_style: { bold: true } } }] } }; },
+  bullet(text) { return { block_type: 6, bullet: { elements: [{ text_run: { content: text || '' } }] } }; },
   table(headers, rows) {
     const allRows = [headers, ...rows];
     return {
