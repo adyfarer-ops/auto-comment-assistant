@@ -114,11 +114,11 @@ class TikHubApiService {
 
   // Reddit
   async getRedditUserInfo(username) {
-    return this.request('GET', '/api/v1/reddit/web/fetch_user_profile', { username });
+    return this.request('GET', '/api/v1/reddit/app/fetch_user_profile', { username });
   }
 
   async getRedditUserPosts(username, after = '') {
-    return this.request('GET', '/api/v1/reddit/web/fetch_user_posts', {
+    return this.request('GET', '/api/v1/reddit/app/fetch_user_posts', {
       username,
       after,
       limit: 25,
