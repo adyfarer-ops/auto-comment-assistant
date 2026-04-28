@@ -3,7 +3,6 @@ const feishuBitable = require('./feishu-bitable');
 const feishuSpreadsheet = require('./feishu-spreadsheet');
 const feishuAuth = require('./feishu-auth');
 const aiService = require('./ai-service');
-const notifyService = require('./notify-service');
 const syncService = require('./sync-service');
 const platformResolver = require('./platform-resolver');
 const tableResolver = require('./table-resolver');
@@ -274,20 +273,6 @@ class WeeklyReportService {
       logger.error('Failed to update project management table', { error: error.message });
     }
 
-    // 发送周报生成通知
-    try {
-      await notifyService.sendWeeklyReportResult(reportData.projectName, {
-        accountsCount: reportData.accounts.length,
-        totalPublished: reportData.summary.totalPublished,
-        totalPlayCount: reportData.summary.totalPlayCount,
-        avgCompletionRate: reportData.summary.avgCompletionRate,
-        docUrl,
-      });
-      logger.info('Weekly report notification sent');
-    } catch (error) {
-      logger.error('Failed to send weekly report notification', { error: error.message });
-    }
-
     logger.info('Weekly report generated', { summary: reportData.summary });
     return reportData;
   }
@@ -556,10 +541,6 @@ ${accountLines}
     const periodTitle = this.formatPeriodTitle(reportData.startDate, reportData.endDate);
     const rows = [];
 
-    rows.push([periodTitle]);
-    rows.push([]);
-    rows.push(template.headers);
-
     const headers = template.headers;
     const colIndex = {
       number: headers.findIndex(h => String(h).includes('编号')),
@@ -579,6 +560,14 @@ ${accountLines}
 
     const maxCol = Math.max(...Object.values(colIndex).filter(v => v >= 0)) + 1;
     const accountCount = template.accounts.length;
+
+    const titleRow = new Array(maxCol).fill('');
+    titleRow[0] = periodTitle;
+    rows.push(titleRow);
+    rows.push(new Array(maxCol).fill(''));
+    const headerRow = new Array(maxCol).fill('');
+    template.headers.forEach((h, i) => { if (i < maxCol) headerRow[i] = h; });
+    rows.push(headerRow);
 
     for (let i = 0; i < accountCount; i++) {
       const tmpl = template.accounts[i];
@@ -607,7 +596,7 @@ ${accountLines}
       rows.push(row);
     }
 
-    rows.push([]);
+    rows.push(new Array(maxCol).fill(''));
 
     const opsSection = [
       ['二、周运营进展同步', ''],
@@ -621,7 +610,7 @@ ${accountLines}
       rows.push(opRow);
     }
 
-    rows.push([]);
+    rows.push(new Array(maxCol).fill(''));
 
     return { rows, maxCol };
   }

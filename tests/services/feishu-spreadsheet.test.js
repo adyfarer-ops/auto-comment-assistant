@@ -36,7 +36,7 @@ describe('feishuSpreadsheet', () => {
     expect(result).toEqual([['a', 'b'], ['c', 'd']]);
   });
 
-  it('insertRows should call dimension-rows API', async () => {
+  it('insertRows should call insert_dimension_range API', async () => {
     axios.mockResolvedValueOnce({
       data: { code: 0, data: {} },
     });
@@ -44,7 +44,7 @@ describe('feishuSpreadsheet', () => {
     expect(axios).toHaveBeenCalledWith(
       expect.objectContaining({
         method: 'POST',
-        url: expect.stringContaining('/dimension-rows'),
+        url: expect.stringContaining('/insert_dimension_range'),
         data: expect.objectContaining({
           dimension: {
             sheetId: 'sheetId456',

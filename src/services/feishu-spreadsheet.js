@@ -39,14 +39,13 @@ class FeishuSpreadsheetService {
   }
 
   async insertRows(spreadsheetToken, sheetId, startIndex, endIndex) {
-    return this.request('POST', spreadsheetToken, '/dimension-rows', {
+    return this.request('POST', spreadsheetToken, '/insert_dimension_range', {
       dimension: {
         sheetId,
         majorDimension: 'ROWS',
         startIndex,
         endIndex,
       },
-      inheritStyle: true,
     });
   }
 

@@ -46,7 +46,6 @@ router.post('/weekly-report/generate', async (req, res, next) => {
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
-        await notifyService.sendWeeklyReportResult(projectName, report);
       } catch (error) {
         logger.error('Weekly report generation failed', { traceId, error: error.message });
         await logService.updateLog(weeklyLogId, {
