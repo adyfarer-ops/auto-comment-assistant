@@ -764,10 +764,11 @@ class SyncService {
       }
     }
 
-    // 标记不在新数据中的旧记录为已删除
+    // 删除不在新数据中的旧记录
+    const toDelete = [];
     for (const [workId, recordId] of existingMap) {
       if (!processedWorkIds.has(workId)) {
-        toUpdate.push({ recordId, fields: { '数据状态': '已删除', '同步时间': now } });
+        toDelete.push(recordId);
       }
     }
 
@@ -780,8 +781,15 @@ class SyncService {
     if (toUpdate.length > 0) {
       await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, toUpdate);
     }
+    if (toDelete.length > 0) {
+      await this._sleep(config.sync?.batchInterval || 500);
+      for (const recordId of toDelete) {
+        await feishuBitable.deleteRecord(this.projectMgmtAppToken, detailTableId, recordId);
+        await this._sleep(100);
+      }
+    }
 
-    return { createdCount: toCreate.length, updatedCount: toUpdate.length };
+    return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
   }
 
   async updateAccountStats(account, planTableId, works, followersCount = 0) {
