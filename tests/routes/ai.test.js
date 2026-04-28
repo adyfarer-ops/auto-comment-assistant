@@ -11,6 +11,15 @@ jest.mock('../../src/services/feishu-bitable', () => ({
       },
     },
   ]),
+  getRecord: jest.fn().mockResolvedValue({
+    record: {
+      record_id: 'rec123',
+      fields: {
+        '项目名称': '测试项目',
+        '表格ID': 'tbl123',
+      },
+    },
+  }),
 }));
 
 jest.mock('../../src/services/ai-service', () => ({

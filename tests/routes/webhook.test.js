@@ -13,6 +13,16 @@ jest.mock('../../src/services/feishu-bitable', () => ({
     },
   ]),
   updateRecord: jest.fn().mockResolvedValue({}),
+  getRecord: jest.fn().mockResolvedValue({
+    record: {
+      record_id: 'rec123',
+      fields: {
+        '项目名称': '测试项目',
+        '表格ID': 'tbl123',
+        '任务执行状态': '空闲',
+      },
+    },
+  }),
 }));
 
 jest.mock('../../src/services/feishu-auth', () => ({
@@ -24,6 +34,10 @@ jest.mock('../../src/services/log-service', () => ({
   logSyncStart: jest.fn().mockResolvedValue({}),
   logSyncSuccess: jest.fn().mockResolvedValue({}),
   logSyncError: jest.fn().mockResolvedValue({}),
+  fixStaleLogs: jest.fn().mockResolvedValue({}),
+  createLog: jest.fn().mockResolvedValue('log123'),
+  updateLog: jest.fn().mockResolvedValue({}),
+  formatDuration: jest.fn().mockReturnValue('00:01:00'),
 }));
 
 jest.mock('../../src/services/sync-service', () => ({
@@ -68,7 +82,7 @@ describe('POST /api/webhook/button', () => {
       .set('x-webhook-token', 'test-secret')
       .send({ recordId: 'rec123', action: 'weekly' });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     expect(res.body.code).toBe(0);
   });
 
@@ -78,7 +92,7 @@ describe('POST /api/webhook/button', () => {
       .set('x-webhook-token', 'test-secret')
       .send({ recordId: 'rec123', action: 'review' });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     expect(res.body.code).toBe(0);
   });
 

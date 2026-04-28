@@ -13,6 +13,7 @@ jest.mock('axios', () => ({
   create: jest.fn(() => ({
     post: jest.fn().mockResolvedValue({ data: { code: 0 } }),
     get: jest.fn().mockResolvedValue({ data: { code: 0 } }),
+    defaults: {},
   })),
 }));
 
@@ -49,10 +50,23 @@ jest.mock('../../src/services/feishu-bitable', () => ({
   }),
   updateRecord: jest.fn().mockResolvedValue({}),
   createRecord: jest.fn().mockResolvedValue({}),
+  getRecord: jest.fn().mockResolvedValue({
+    record: {
+      record_id: 'rec123',
+      fields: {
+        '项目名称': '测试项目',
+        '表格ID': 'tbl123',
+        '任务执行状态': '空闲',
+        '周报开始日期': '2026-04-20',
+        '周报结束日期': '2026-04-26',
+      },
+    },
+  }),
 }));
 
 jest.mock('../../src/services/feishu-auth', () => ({
   getAppToken: jest.fn().mockResolvedValue('fake-token'),
+  getNotifyAppToken: jest.fn().mockResolvedValue('fake-notify-token'),
 }));
 
 jest.mock('../../src/services/feishu-spreadsheet', () => ({
@@ -69,9 +83,9 @@ describe('POST /api/weekly-report/generate', () => {
       .post('/api/weekly-report/generate')
       .send({ recordId: 'rec123' });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     expect(res.body.code).toBe(0);
-    expect(res.body.data).toBeDefined();
+    expect(res.body.traceId).toBeDefined();
   });
 
   it('should require recordId', async () => {
@@ -90,9 +104,9 @@ describe('POST /api/review-report/generate', () => {
       .post('/api/review-report/generate')
       .send({ recordId: 'rec123', templateType: '终末地' });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(202);
     expect(res.body.code).toBe(0);
-    expect(res.body.data).toBeDefined();
+    expect(res.body.traceId).toBeDefined();
   });
 
   it('should require recordId', async () => {

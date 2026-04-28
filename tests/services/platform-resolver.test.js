@@ -26,12 +26,22 @@ describe('PlatformResolver', () => {
   describe('extractUsername', () => {
     it('should extract TikTok username', () => {
       const u = platformResolver.extractUsername('https://www.tiktok.com/@user', 'TK');
-      expect(u).toBe('@user');
+      expect(u).toBe('user');
     });
 
     it('should extract YouTube handle', () => {
       const u = platformResolver.extractUsername('https://www.youtube.com/@user', 'YTB');
       expect(u).toBe('@user');
+    });
+
+    it('should extract Reddit username from /user/', () => {
+      const u = platformResolver.extractUsername('https://www.reddit.com/user/Realistic_Artist_k', 'RD');
+      expect(u).toBe('Realistic_Artist_k');
+    });
+
+    it('should extract Reddit username from /u/', () => {
+      const u = platformResolver.extractUsername('https://www.reddit.com/u/spez', 'RD');
+      expect(u).toBe('spez');
     });
   });
 });

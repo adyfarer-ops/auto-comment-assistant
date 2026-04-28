@@ -10,8 +10,8 @@ describe('SyncService', () => {
       ];
 
       const stats = syncService.calculateDateStats(works);
-      expect(stats['4月18日']).toBe('2条');
-      expect(stats['4月19日']).toBe('1条');
+      expect(stats['4月18日']).toBe('2');
+      expect(stats['4月19日']).toBe('1');
     });
 
     it('should return empty for no works', () => {

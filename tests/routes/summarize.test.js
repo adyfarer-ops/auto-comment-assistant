@@ -30,6 +30,15 @@ jest.mock('../../src/services/feishu-bitable', () => ({
     }
     return [];
   }),
+  getRecord: jest.fn().mockResolvedValue({
+    record: {
+      record_id: 'rec123',
+      fields: {
+        '项目名称': '测试项目',
+        '表格ID': 'tbl123',
+      },
+    },
+  }),
 }));
 
 describe('POST /api/summarize/account', () => {
