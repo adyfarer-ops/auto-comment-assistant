@@ -389,20 +389,20 @@ class SyncService {
             const items = videos.data?.itemList || videos.data?.videos || [];
             if (items.length) {
               works.push(...items.map(v => {
-                const stats = v.statistics || v.stats || {};
-                if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
-                  logger.warn('TikHub returned play_count=0, possible data source limitation', { username });
+                const stats = v.stats || v.statistics || {};
+                if (parseInt(stats.playCount) === 0 && parseInt(stats.diggCount) > 0) {
+                  logger.warn('TikHub returned playCount=0, possible data source limitation', { username });
                 }
                 return {
                   workId: v.id || v.video_id || v.aweme_id,
                   title: v.desc || v.title || '',
                   link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
-                  publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
-                  playCount: parseInt(stats.play_count) || 0,
-                  diggCount: parseInt(stats.digg_count) || 0,
-                  commentCount: parseInt(stats.comment_count) || 0,
-                  shareCount: parseInt(stats.share_count) || 0,
-                  collectCount: parseInt(stats.collect_count) || 0,
+                  publishTime: v.createTime ? new Date(v.createTime * 1000).toISOString().split('T')[0] : null,
+                  playCount: parseInt(stats.playCount) || 0,
+                  diggCount: parseInt(stats.diggCount) || 0,
+                  commentCount: parseInt(stats.commentCount) || 0,
+                  shareCount: parseInt(stats.shareCount) || 0,
+                  collectCount: parseInt(stats.collectCount) || 0,
                 };
               }));
             }
