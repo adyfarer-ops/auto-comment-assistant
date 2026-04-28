@@ -42,11 +42,10 @@ class YouTubeApiService {
     return data.items?.[0] || null;
   }
 
-  async getVideos(channelId, pageToken = '') {
-    const playlistId = `UU${channelId.slice(2)}`;
+  async getVideos(uploadsPlaylistId, pageToken = '') {
     const data = await this.request('/playlistItems', {
       part: 'snippet,contentDetails',
-      playlistId,
+      playlistId: uploadsPlaylistId,
       maxResults: 50,
       pageToken,
     });

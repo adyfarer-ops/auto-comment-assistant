@@ -430,7 +430,12 @@ class SyncService {
             let pageToken = '';
             let page = 0;
             while (page < maxPages) {
-              const videosData = await youtubeApi.getVideos(channel.id, pageToken);
+              const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
+              if (!uploadsPlaylistId) {
+                logger.warn('YouTube channel uploads playlist not found', { username, channelId: channel.id });
+                break;
+              }
+              const videosData = await youtubeApi.getVideos(uploadsPlaylistId, pageToken);
               const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
               if (videoIds.length > 0) {
                 const stats = await youtubeApi.getVideoStatistics(videoIds);
