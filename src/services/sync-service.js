@@ -481,27 +481,36 @@ class SyncService {
         try {
           let cursor = 0;
           let page = 0;
+          const seenWorkIds = new Set();
           while (page < maxPages) {
             const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor), 'TikTok');
             const items = videos.data?.aweme_list || videos.data?.itemList || videos.data?.videos || [];
             if (items.length) {
-              works.push(...items.map(v => {
+              for (const v of items) {
+                const workId = v.video_id || v.aweme_id || v.id;
+                if (!workId) continue;
+                const key = String(workId);
+                if (seenWorkIds.has(key)) {
+                  logger.warn('TikTok fetch skipping duplicate workId', { username, workId: key, page });
+                  continue;
+                }
+                seenWorkIds.add(key);
                 const stats = v.statistics || v.stats || {};
                 if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
                   logger.warn('TikHub returned playCount=0, possible data source limitation', { username });
                 }
-                return {
-                  workId: v.video_id || v.aweme_id || v.id,
+                works.push({
+                  workId: key,
                   title: v.desc || v.title || '',
-                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.video_id || v.aweme_id || v.id}`,
+                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${key}`,
                   publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
                   playCount: parseInt(stats.play_count) || 0,
                   diggCount: parseInt(stats.digg_count) || 0,
                   commentCount: parseInt(stats.comment_count) || 0,
                   shareCount: parseInt(stats.share_count) || 0,
                   collectCount: parseInt(stats.collect_count) || 0,
-                };
-              }));
+                });
+              }
             }
             if (shouldBreakByDate(items, v => v.create_time ? new Date(v.create_time * 1000).getTime() : null)) {
               logger.info('TikTok pagination stopped by date boundary', { username, page });
@@ -578,10 +587,10 @@ class SyncService {
                   title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
                   link: p.link || `https://www.instagram.com/p/${p.code}/`,
                   publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
-                  playCount: parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
+                  playCount: parseInt(p.play_count) || parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
                   diggCount: parseInt(p.like_count) || 0,
                   commentCount: parseInt(p.comment_count) || 0,
-                  shareCount: 0,
+                  shareCount: parseInt(p.share_count) || 0,
                   collectCount: parseInt(p.save_count) || 0,
                 };
               }));
@@ -761,11 +770,15 @@ class SyncService {
       }
     }
 
+    // 对 works 去重，防止 API 返回重复数据导致重复插入
+    const uniqueWorks = [...new Map(works.map(w => [String(w.workId), w])).values()];
+    logger.info('Detail table dedup check', { detailTableId, allRecordsCount: allRecords.length, existingMapSize: existingMap.size, worksCount: works.length, uniqueWorksCount: uniqueWorks.length });
+
     const toCreate = [];
     const toUpdate = [];
     const processedWorkIds = new Set();
 
-    for (const work of works) {
+    for (const work of uniqueWorks) {
       processedWorkIds.add(String(work.workId));
       const fields = {
         '作品ID': String(work.workId),

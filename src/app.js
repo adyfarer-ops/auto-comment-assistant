@@ -40,6 +40,14 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// 请求日志中间件（用于排查重启后异常触发同步的问题）
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    logger.info('HTTP request', { method: req.method, path: req.path, query: req.query, body: req.body ? JSON.stringify(req.body).slice(0, 500) : null, ip: req.ip });
+  }
+  next();
+});
+
 // API 路由总入口
 app.use('/api', apiRoutes);
 
