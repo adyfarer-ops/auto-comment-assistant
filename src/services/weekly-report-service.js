@@ -421,35 +421,146 @@ ${accountLines}
 
   async writeToSpreadsheet(sheetToken, reportData) {
     const sheetName = 'Sheet1';
-    const headerRow = 1;
 
-    // 写入表头
-    const headers = ['账号名称', '平台', '已发布', '保底条数', '播放量', '发布完成率', '负责人'];
-    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A${headerRow}:G${headerRow}`, [headers]);
+    // 1. 读取现有顶部周期作为模板
+    const template = await this.readTopCycleFromSheet(sheetToken);
 
-    // 写入数据
-    const rows = reportData.accounts.map((a, i) => [
-      a.name,
-      a.platform,
-      a.published,
-      a.target,
-      a.playCount,
-      a.completionRate,
-      a.responsible,
-    ]);
-
-    if (rows.length > 0) {
-      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A2:G${rows.length + 1}`, rows);
+    if (!template || !template.accounts || template.accounts.length === 0) {
+      logger.warn('No existing cycle template found in sheet, falling back to simplified write', { sheetToken });
+      // 兜底：简化写入
+      const headers = ['账号名称', '平台', '已发布', '保底条数', '播放量', '发布完成率', '负责人'];
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:G1`, [headers]);
+      const rows = reportData.accounts.map((a) => [
+        a.name,
+        a.platform,
+        a.published,
+        a.target,
+        a.playCount,
+        a.completionRate,
+        a.responsible,
+      ]);
+      if (rows.length > 0) {
+        await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A2:G${rows.length + 1}`, rows);
+      }
+      return;
     }
 
-    // 写入汇总
-    const summaryRow = rows.length + 3;
-    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A${summaryRow}:G${summaryRow + 2}`, [
-      ['汇总', '', '', '', '', '', ''],
-      ['总账号数', reportData.summary.totalAccounts, '', '', '', '', ''],
-      ['总发布数', reportData.summary.totalPublished, '', '', '', '', ''],
-      ['总播放量', reportData.summary.totalPlayCount, '', '', '', '', ''],
-    ]);
+    const accountCount = template.accounts.length;
+    const insertRowCount = accountCount + 10;
+
+    // 2. 在 sheet 顶部插入空行
+    try {
+      const meta = await feishuSpreadsheet.getSheetMetadata(sheetToken);
+      const sheetId = meta?.sheets?.[0]?.sheet_id || '0';
+      await feishuSpreadsheet.insertRows(sheetToken, sheetId, 0, insertRowCount);
+      logger.info('Inserted rows at top of sheet', { sheetToken, rowCount: insertRowCount });
+    } catch (error) {
+      logger.error('Failed to insert rows at top, falling back to full rewrite', { sheetToken, error: error.message });
+      await this._fallbackWriteToSpreadsheet(sheetToken, reportData, template);
+      return;
+    }
+
+    // 3. 组装新周期数据
+    const periodTitle = this.formatPeriodTitle(reportData.startDate, reportData.endDate);
+    const rows = [];
+
+    rows.push([periodTitle]);
+    rows.push([]);
+    rows.push(template.headers);
+
+    const headers = template.headers;
+    const colIndex = {
+      number: headers.findIndex(h => String(h).includes('编号')),
+      type: headers.findIndex(h => String(h).includes('类型')),
+      supplier: headers.findIndex(h => String(h).includes('供应商')),
+      region: headers.findIndex(h => String(h).includes('区域')),
+      contentType: headers.findIndex(h => String(h).includes('内容类型')),
+      platform: headers.findIndex(h => String(h).includes('平台')),
+      userid: headers.findIndex(h => String(h).includes('userid')),
+      name: headers.findIndex(h => String(h).includes('账号名称')),
+      link: headers.findIndex(h => String(h).includes('账号链接')),
+      published: headers.findIndex(h => String(h).includes('发布数量')),
+      playCount: headers.findIndex(h => String(h).includes('播放量')),
+      avgPerPost: headers.findIndex(h => String(h).includes('稿均')),
+      fansGrowth: headers.findIndex(h => String(h).includes('增粉量')),
+    };
+
+    const maxCol = Math.max(...Object.values(colIndex).filter(v => v >= 0)) + 1;
+
+    for (let i = 0; i < accountCount; i++) {
+      const tmpl = template.accounts[i];
+      const data = reportData.accounts[i] || {};
+      const row = new Array(maxCol).fill('');
+
+      if (colIndex.number >= 0) row[colIndex.number] = tmpl.number || '';
+      if (colIndex.type >= 0) row[colIndex.type] = tmpl.type || '';
+      if (colIndex.supplier >= 0) row[colIndex.supplier] = tmpl.supplier || '';
+      if (colIndex.region >= 0) row[colIndex.region] = tmpl.region || '';
+      if (colIndex.contentType >= 0) row[colIndex.contentType] = tmpl.contentType || '';
+      if (colIndex.platform >= 0) row[colIndex.platform] = tmpl.platform || '';
+      if (colIndex.userid >= 0) row[colIndex.userid] = tmpl.userid || '';
+      if (colIndex.name >= 0) row[colIndex.name] = tmpl.name || '';
+      if (colIndex.link >= 0) row[colIndex.link] = tmpl.link || '';
+      if (colIndex.published >= 0) row[colIndex.published] = data.published || 0;
+      if (colIndex.playCount >= 0) row[colIndex.playCount] = data.playCount || 0;
+      if (colIndex.avgPerPost >= 0) {
+        const playCol = this._colIndexToLetter(colIndex.playCount);
+        const pubCol = this._colIndexToLetter(colIndex.published);
+        const rowNum = 4 + i;
+        row[colIndex.avgPerPost] = `=${playCol}${rowNum}/${pubCol}${rowNum}`;
+      }
+      if (colIndex.fansGrowth >= 0) row[colIndex.fansGrowth] = 0;
+
+      rows.push(row);
+    }
+
+    rows.push([]);
+
+    const opsSection = [
+      ['二、周运营进展同步', ''],
+      ['本周 Highlights', reportData.highlights || ''],
+      ['本周 Lowlights', reportData.lowlights || ''],
+      ['风险与问题', ''],
+      ['下步规划', reportData.nextSteps || ''],
+    ];
+    for (const opRow of opsSection) {
+      while (opRow.length < maxCol) opRow.push('');
+      rows.push(opRow);
+    }
+
+    rows.push([]);
+
+    // 4. 批量写入
+    try {
+      const endRow = rows.length;
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
+      logger.info('Weekly report cycle block written to sheet top', { sheetToken, periodTitle, accountCount });
+    } catch (error) {
+      logger.error('Failed to write cycle block to sheet', { sheetToken, error: error.message });
+      throw error;
+    }
+  }
+
+  _colIndexToLetter(index) {
+    let result = '';
+    let i = index;
+    while (i >= 0) {
+      result = String.fromCharCode(65 + (i % 26)) + result;
+      i = Math.floor(i / 26) - 1;
+    }
+    return result;
+  }
+
+  async _fallbackWriteToSpreadsheet(sheetToken, reportData, template) {
+    logger.warn('Using fallback full-rewrite for weekly report sheet', { sheetToken });
+    const sheetName = 'Sheet1';
+    const periodTitle = this.formatPeriodTitle(reportData.startDate, reportData.endDate);
+    const headers = template.headers || ['账号编号', '账号类型', '负责供应商', '区域', '内容类型', '平台', 'userid', '账号名称', '账号链接', '总发布数量', '总播放量', '稿均', '增粉量'];
+    const rows = [];
+    rows.push([periodTitle]);
+    rows.push([]);
+    rows.push(headers);
+    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:M${rows.length}`, rows);
   }
 
   async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink, versionStart, versionEnd) {
