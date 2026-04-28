@@ -129,20 +129,6 @@ class WeeklyReportService {
       logger.error('Failed to update project management table', { error: error.message });
     }
 
-    // 发送飞书通知
-    try {
-      await notifyService.sendWeeklyReportResult(fields['项目名称'], {
-        accountsCount: reportData.summary.totalAccounts,
-        totalPublished: reportData.summary.totalPublished,
-        totalPlayCount: reportData.summary.totalPlayCount,
-        avgCompletionRate: reportData.summary.avgCompletionRate,
-        docUrl,
-      });
-      logger.info('Weekly report notification sent');
-    } catch (error) {
-      logger.error('Failed to send weekly report notification', { error: error.message });
-    }
-
     logger.info('Weekly report generated', { summary: reportData.summary });
     return reportData;
   }

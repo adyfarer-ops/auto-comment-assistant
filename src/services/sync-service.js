@@ -786,8 +786,6 @@ class SyncService {
       const fields = {
         '作品ID': String(work.workId),
         '作品标题': work.title || '',
-        '作品链接': work.link || '',
-        '发布时间': work.publishTime || '',
         '播放量': Number(work.playCount) || 0,
         '点赞数': Number(work.diggCount) || 0,
         '评论数': Number(work.commentCount) || 0,
@@ -797,11 +795,13 @@ class SyncService {
         '同步时间': now,
         '总表记录ID': accountRecordId,
       };
-      // 过滤掉 undefined/null 值，避免飞书 API 字段转换错误
-      for (const key of Object.keys(fields)) {
-        if (fields[key] === undefined || fields[key] === null) {
-          delete fields[key];
-        }
+      // 旧表可能把 作品链接 设为 URL 类型、发布时间 设为日期类型，
+      // 空字符串或不合法值会导致 FieldConvFail，只传有效值
+      if (work.link && String(work.link).match(/^https?:\/\//)) {
+        fields['作品链接'] = work.link;
+      }
+      if (work.publishTime) {
+        fields['发布时间'] = work.publishTime;
       }
       const recordId = existingMap.get(String(work.workId));
       if (recordId) {
