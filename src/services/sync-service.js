@@ -200,11 +200,13 @@ class SyncService {
             let updatedCount = 0;
             let skippedCount = 0;
 
+            const followersCount = await this.fetchPlatformFollowers(platform.code, username);
+
             if (filteredWorks.length > 0 && detailTableId) {
               const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
               createdCount = syncResult.createdCount || 0;
               updatedCount = syncResult.updatedCount || 0;
-              await this.updateAccountStats(account, planTableId, filteredWorks);
+              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount);
               totalWorks += filteredWorks.length;
             } else {
               skippedCount = works.length - filteredWorks.length;
@@ -337,10 +339,11 @@ class SyncService {
     try {
       const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
       const works = await this.fetchPlatformWorks(platform.code, username);
+      const followersCount = await this.fetchPlatformFollowers(platform.code, username);
 
       if (detailTableId) {
         await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
-        await this.updateAccountStats(account, planTableId, works);
+        await this.updateAccountStats(account, planTableId, works, followersCount);
       }
 
       logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
@@ -374,6 +377,39 @@ class SyncService {
     }
   }
 
+  async fetchPlatformFollowers(platformCode, username) {
+    try {
+      switch (platformCode) {
+        case 'TK':
+        case 'DY': {
+          const ids = await tikhubApi.getTikTokUserInfo(username);
+          const userId = ids?.data?.user_id;
+          const secUid = ids?.data?.sec_user_id;
+          if (!secUid) return 0;
+          const profile = await tikhubApi.getTikTokUserProfile(userId, secUid);
+          return parseInt(profile?.data?.user?.follower_count) || 0;
+        }
+        case 'YTB': {
+          const channel = await youtubeApi.getChannelByHandle(username) || await youtubeApi.getChannelById(username);
+          return parseInt(channel?.statistics?.subscriberCount) || 0;
+        }
+        case 'X': {
+          const info = await tikhubApi.getXUserInfo(username);
+          return parseInt(info?.data?.sub_count) || 0;
+        }
+        case 'RD': {
+          const info = await tikhubApi.getRedditUserInfo(username);
+          return parseInt(info?.data?.redditorInfoByName?.karma?.total) || 0;
+        }
+        default:
+          return 0;
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch followers count', { platformCode, username, error: error.message });
+      return 0;
+    }
+  }
+
   async fetchPlatformWorks(platformCode, username) {
     const works = [];
     const maxPages = 20;
@@ -386,28 +422,28 @@ class SyncService {
           let page = 0;
           while (page < maxPages) {
             const videos = await tikhubApi.getTikTokUserVideos(username, cursor);
-            const items = videos.data?.itemList || videos.data?.videos || [];
+            const items = videos.data?.aweme_list || videos.data?.itemList || videos.data?.videos || [];
             if (items.length) {
               works.push(...items.map(v => {
-                const stats = v.stats || v.statistics || {};
-                if (parseInt(stats.playCount) === 0 && parseInt(stats.diggCount) > 0) {
+                const stats = v.statistics || v.stats || {};
+                if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
                   logger.warn('TikHub returned playCount=0, possible data source limitation', { username });
                 }
                 return {
-                  workId: v.id || v.video_id || v.aweme_id,
+                  workId: v.aweme_id || v.id || v.video_id,
                   title: v.desc || v.title || '',
-                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.id || v.video_id}`,
-                  publishTime: v.createTime ? new Date(v.createTime * 1000).toISOString().split('T')[0] : null,
-                  playCount: parseInt(stats.playCount) || 0,
-                  diggCount: parseInt(stats.diggCount) || 0,
-                  commentCount: parseInt(stats.commentCount) || 0,
-                  shareCount: parseInt(stats.shareCount) || 0,
-                  collectCount: parseInt(stats.collectCount) || 0,
+                  link: v.share_url || `https://www.tiktok.com/@${username}/video/${v.aweme_id || v.id || v.video_id}`,
+                  publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
+                  playCount: parseInt(stats.play_count) || 0,
+                  diggCount: parseInt(stats.digg_count) || 0,
+                  commentCount: parseInt(stats.comment_count) || 0,
+                  shareCount: parseInt(stats.share_count) || 0,
+                  collectCount: parseInt(stats.collect_count) || 0,
                 };
               }));
             }
-            const hasMore = videos.data?.hasMore ?? false;
-            const nextCursor = videos.data?.cursor;
+            const hasMore = videos.data?.has_more ?? videos.data?.hasMore ?? false;
+            const nextCursor = videos.data?.max_cursor ?? videos.data?.cursor;
             if (!hasMore || nextCursor === undefined || nextCursor === cursor) break;
             cursor = nextCursor;
             page++;
@@ -464,13 +500,13 @@ class SyncService {
       }
       case 'INS': {
         try {
-          let endCursor = '';
+          let paginationToken = '';
           let page = 0;
           while (page < maxPages) {
-            const posts = await tikhubApi.getInstagramUserPosts(username, endCursor);
-            const edges = posts.data?.edges || posts.data?.items || [];
-            if (edges.length) {
-              works.push(...edges.map(item => {
+            const posts = await tikhubApi.getInstagramUserPosts(username, paginationToken);
+            const items = posts.data?.data?.items || posts.data?.edges || posts.data?.items || [];
+            if (items.length) {
+              works.push(...items.map(item => {
                 const p = item.node || item;
                 return {
                   workId: p.id || p.pk || p.code,
@@ -485,10 +521,9 @@ class SyncService {
                 };
               }));
             }
-            const pageInfo = posts.data?.page_info;
-            if (!pageInfo?.has_next_page || !pageInfo?.end_cursor) break;
-            if (pageInfo.end_cursor === endCursor) break;
-            endCursor = pageInfo.end_cursor;
+            const nextToken = posts.data?.pagination_token || posts.data?.page_info?.end_cursor;
+            if (!nextToken || nextToken === paginationToken) break;
+            paginationToken = nextToken;
             page++;
             await this._sleep(300);
           }
@@ -539,22 +574,25 @@ class SyncService {
           let page = 0;
           while (page < maxPages) {
             const posts = await tikhubApi.getRedditUserPosts(username, after);
-            const postList = posts.data?.posts || posts.data?.items || [];
+            const edges = posts.data?.postFeed?.elements?.edges || posts.data?.posts || posts.data?.items || [];
+            const postList = edges.map(e => e.node || e).filter(Boolean);
             if (postList.length) {
               works.push(...postList.map(p => ({
                 workId: p.id,
-                title: p.title?.slice(0, 100) || '',
-                link: p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
-                publishTime: p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null,
+                title: p.postTitle?.slice(0, 100) || p.title?.slice(0, 100) || '',
+                link: p.url || p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
+                publishTime: p.createdAt ? p.createdAt.split('T')[0] : (p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null),
                 playCount: parseInt(p.score) || 0,
                 diggCount: parseInt(p.ups) || 0,
-                commentCount: parseInt(p.num_comments) || 0,
+                commentCount: parseInt(p.commentCount) || parseInt(p.num_comments) || 0,
                 shareCount: 0,
                 collectCount: 0,
               })));
             }
-            const nextAfter = posts.data?.after;
-            if (!nextAfter || nextAfter === after) break;
+            const pageInfo = posts.data?.postFeed?.elements?.pageInfo;
+            const nextAfter = pageInfo?.endCursor || posts.data?.after;
+            const hasMore = pageInfo?.hasNextPage ?? (nextAfter ? true : false);
+            if (!hasMore || !nextAfter || nextAfter === after) break;
             after = nextAfter;
             page++;
             await this._sleep(300);
@@ -681,7 +719,7 @@ class SyncService {
     return { createdCount: toCreate.length, updatedCount: toUpdate.length };
   }
 
-  async updateAccountStats(account, planTableId, works) {
+  async updateAccountStats(account, planTableId, works, followersCount = 0) {
     if (!works || works.length === 0) {
       logger.warn('Skipping account stats update due to empty works', { accountName: account.fields?.['账号名称'] });
       return;
@@ -692,16 +730,29 @@ class SyncService {
 
     const dateStats = this.calculateDateStats(works);
 
-    const updateFields = {
+    const baseFields = {
       '目前播放量': totalPlayCount,
-      '已发布': publishedCount,
-      ...dateStats,
+      '已发布': String(publishedCount),
+      '粉丝总量': followersCount,
     };
 
     try {
-      await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, updateFields);
+      await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, {
+        ...baseFields,
+        ...dateStats,
+      });
     } catch (error) {
-      logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: error.message, code: error.code });
+      const errCode = error.message?.match(/code:\s*(\d+)/)?.[1];
+      if (errCode === '1254045' || errCode === '1254060') {
+        logger.warn('Date stats field mismatch, falling back to base fields', { accountName: account.fields?.['账号名称'], code: errCode });
+        try {
+          await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, baseFields);
+        } catch (fallbackError) {
+          logger.error('updateAccountStats fallback failed', { accountName: account.fields?.['账号名称'], error: fallbackError.message });
+        }
+      } else {
+        logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: error.message, code: error.code });
+      }
     }
   }
 

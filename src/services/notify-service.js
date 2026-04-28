@@ -42,7 +42,7 @@ class NotifyService {
       const response = await axios.post(`${this.baseUrl}/messages`, {
         receive_id: chatId,
         msg_type: 'interactive',
-        content: JSON.stringify({ card }),
+        content: JSON.stringify(card),
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -67,24 +67,27 @@ class NotifyService {
   async sendProjectSyncResult(chatId, projectName, result) {
     const time = new Date().toLocaleString('zh-CN');
     const card = {
+      schema: '2.0',
       config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `📊 同步完成 | ${projectName}` },
         template: 'green',
       },
-      elements: [
-        {
-          tag: 'div',
-          text: {
-            tag: 'lark_md',
-            content: `**账号数：**${result.accountsCount || 0}`,
+      body: {
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `**账号数：**${result.accountsCount || 0}`,
+            },
           },
-        },
-        {
-          tag: 'note',
-          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
-        },
-      ],
+          {
+            tag: 'note',
+            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+          },
+        ],
+      },
     };
 
     return this.sendInteractiveCard(chatId, card);
@@ -108,21 +111,24 @@ class NotifyService {
     }
 
     const card = {
+      schema: '2.0',
       config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `📋 周报已生成 | ${projectName}` },
         template: 'blue',
       },
-      elements: [
-        {
-          tag: 'div',
-          text: { tag: 'lark_md', content: mdContent },
-        },
-        {
-          tag: 'note',
-          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
-        },
-      ],
+      body: {
+        elements: [
+          {
+            tag: 'div',
+            text: { tag: 'lark_md', content: mdContent },
+          },
+          {
+            tag: 'note',
+            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+          },
+        ],
+      },
     };
 
     return this.sendInteractiveCard(chatId, card);
@@ -131,24 +137,27 @@ class NotifyService {
   async sendError(chatId, projectName, error) {
     const time = new Date().toLocaleString('zh-CN');
     const card = {
+      schema: '2.0',
       config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: `❌ 同步失败 | ${projectName}` },
         template: 'red',
       },
-      elements: [
-        {
-          tag: 'div',
-          text: {
-            tag: 'lark_md',
-            content: `**错误信息：**${error.message || '未知错误'}`,
+      body: {
+        elements: [
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `**错误信息：**${error.message || '未知错误'}`,
+            },
           },
-        },
-        {
-          tag: 'note',
-          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
-        },
-      ],
+          {
+            tag: 'note',
+            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+          },
+        ],
+      },
     };
 
     return this.sendInteractiveCard(chatId, card);
@@ -187,29 +196,32 @@ class NotifyService {
     }
 
     const card = {
+      schema: '2.0',
       config: { wide_screen_mode: true },
       header: {
         title: { tag: 'plain_text', content: headerTitle },
         template: templateColor,
       },
-      elements: [
-        {
-          tag: 'div',
-          text: { tag: 'lark_md', content: mdContent },
-        },
-        { tag: 'hr' },
-        {
-          tag: 'div',
-          text: {
-            tag: 'lark_md',
-            content: `**来源：**${triggerSource || 'API'}\n**traceId：**${traceId || ''}`,
+      body: {
+        elements: [
+          {
+            tag: 'div',
+            text: { tag: 'lark_md', content: mdContent },
           },
-        },
-        {
-          tag: 'note',
-          elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
-        },
-      ],
+          { tag: 'hr' },
+          {
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `**来源：**${triggerSource || 'API'}\n**traceId：**${traceId || ''}`,
+            },
+          },
+          {
+            tag: 'note',
+            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+          },
+        ],
+      },
     };
 
     return this.sendInteractiveCard(chatId, card);
