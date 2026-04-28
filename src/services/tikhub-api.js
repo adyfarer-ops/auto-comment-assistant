@@ -79,9 +79,9 @@ class TikHubApiService {
     });
   }
 
-  // Instagram (v3 primary, v2 fallback)
+  // Instagram (v1 for user info, v3/v2 for posts)
   async getInstagramUserInfo(username) {
-    return this.request('GET', '/api/v1/instagram/v3/get_user_profile', { username });
+    return this.request('GET', '/api/v1/instagram/v1/fetch_user_info_by_username', { username });
   }
 
   async getInstagramUserPosts(username, after = '') {

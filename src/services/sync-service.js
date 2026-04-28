@@ -402,7 +402,7 @@ class SyncService {
         }
         case 'INS': {
           const info = await tikhubApi.getInstagramUserInfo(username);
-          return parseInt(info?.data?.follower_count || info?.data?.user?.follower_count) || 0;
+          return parseInt(info?.data?.data?.user?.edge_followed_by?.count) || 0;
         }
         case 'RD': {
           const info = await tikhubApi.getRedditUserInfo(username);
