@@ -592,10 +592,9 @@ ${accountLines}
       if (colIndex.published >= 0) row[colIndex.published] = data.published || 0;
       if (colIndex.playCount >= 0) row[colIndex.playCount] = data.playCount || 0;
       if (colIndex.avgPerPost >= 0) {
-        const playCol = this._colIndexToLetter(colIndex.playCount);
-        const pubCol = this._colIndexToLetter(colIndex.published);
-        const rowNum = 4 + i;
-        row[colIndex.avgPerPost] = `=${playCol}${rowNum}/${pubCol}${rowNum}`;
+        const published = data.published || 0;
+        const playCount = data.playCount || 0;
+        row[colIndex.avgPerPost] = published > 0 ? Math.round(playCount / published) : 0;
       }
       if (colIndex.fansGrowth >= 0) row[colIndex.fansGrowth] = 0;
 
