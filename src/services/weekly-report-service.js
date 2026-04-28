@@ -400,9 +400,10 @@ ${accountLines}
   }
 
   extractPlatform(accountName) {
+    const name = accountName || '';
     const platforms = ['TikTok', 'YouTube', 'Instagram', 'X', 'Reddit', 'Facebook', 'Bilibili', 'Douyin'];
     for (const p of platforms) {
-      if (accountName.includes(p)) return p;
+      if (name.includes(p)) return p;
     }
     return 'Unknown';
   }
