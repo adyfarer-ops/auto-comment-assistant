@@ -279,26 +279,91 @@ class WeeklyReportService {
 
   buildAIPrompt(reportData) {
     const { projectName, period, summary, accounts } = reportData;
-    const accountLines = accounts.map(a =>
-      `- ${a.name}(${a.platform}): 已发布${a.published}条, 播放量${a.playCount}, 完成率${a.completionRate}`
-    ).join('\n');
+    const accountLines = accounts.map(a => {
+      const avg = a.published > 0 ? Math.round(a.playCount / a.published) : 0;
+      return `- ${a.name}(${a.platform}): 发布${a.published}条, 播放量${a.playCount}, 稿均${avg}`;
+    }).join('\n');
 
-    return `请为以下游戏海外社媒运营项目生成本周报分析建议：
+    const avgPerPost = summary.totalPublished > 0
+      ? Math.round(summary.totalPlayCount / summary.totalPublished)
+      : 0;
 
-项目: ${projectName}
-统计周期: ${period}
-总发布数: ${summary.totalPublished}
-总播放量: ${summary.totalPlayCount}
-平均完成率: ${summary.avgCompletionRate}
+    return `你是一位海外社媒运营专家，请根据以下数据为项目"${projectName}"生成本周运营进展，统计周期为 ${period}。
 
-各账号数据:
+各账号数据：
 ${accountLines}
 
-请给出：
-1. 本周数据表现总结（整体播放量、完成率、稿均等核心指标）
-2. 各平台/账号表现分析（哪些表现好，哪些需要关注）
-3. 下周重点方向建议
-4. 风险预警（如有数据异常）`;
+整体数据：
+- 总发布数：${summary.totalPublished}
+- 总播放量：${summary.totalPlayCount}
+- 平均稿均：${avgPerPost}
+
+请按以下格式输出，每条控制在30字以内：
+
+本周 Highlights：
+- （1-3条，指出数据亮点账号或上升趋势，客观陈述，不要堆砌形容词）
+
+本周 Lowlights：
+- （1-3条，指出需要关注的下滑或异常，直接点出问题）
+
+下步规划：
+- （2-3条具体可执行的方向建议）
+
+语气要求：
+- 专业、克制，像资深运营写的内部复盘
+- 不要"让我们""相信""一定"等口语/鸡汤表述
+- 不要"值得注意的是""不难发现"等AI套话
+- 用数据和事实说话，避免空洞的鼓励或批评`;
+  }
+
+  parseAISuggestions(aiText) {
+    const result = {
+      highlights: '',
+      lowlights: '',
+      nextSteps: '',
+    };
+
+    if (!aiText) return result;
+
+    const lines = aiText.split('\n');
+    let currentSection = null;
+    const sections = {
+      highlights: [],
+      lowlights: [],
+      nextSteps: [],
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.includes('Highlights')) {
+        currentSection = 'highlights';
+        continue;
+      }
+      if (trimmed.includes('Lowlights')) {
+        currentSection = 'lowlights';
+        continue;
+      }
+      if (trimmed.includes('下步规划') || trimmed.includes('规划')) {
+        currentSection = 'nextSteps';
+        continue;
+      }
+
+      if (trimmed.startsWith('（') && trimmed.endsWith('）')) continue;
+      if (trimmed.startsWith('（') && trimmed.includes('指出')) continue;
+      if (trimmed.startsWith('（') && trimmed.includes('具体')) continue;
+
+      if (currentSection && (trimmed.startsWith('- ') || trimmed.startsWith('• '))) {
+        sections[currentSection].push(trimmed.replace(/^[-•]\s*/, ''));
+      }
+    }
+
+    result.highlights = sections.highlights.join('\n');
+    result.lowlights = sections.lowlights.join('\n');
+    result.nextSteps = sections.nextSteps.join('\n');
+
+    return result;
   }
 
   async createWeeklyReportDoc(reportData) {
@@ -563,7 +628,7 @@ ${accountLines}
     await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:M${rows.length}`, rows);
   }
 
-  async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink, versionStart, versionEnd) {
+  async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink, versionStart, versionEnd, weeklyStart, weeklyEnd) {
     try {
       const platformInfo = platformResolver.detectPlatform(homeLink);
       if (!platformInfo) {
@@ -585,8 +650,11 @@ ${accountLines}
         // 只统计数据状态正常的记录
         if (r.fields?.['数据状态'] === '已删除') continue;
 
-        // 按版本周期过滤
-        if (versionStart || versionEnd) {
+        // 时间过滤：优先按周报周期，其次按版本周期
+        const filterStart = weeklyStart || versionStart;
+        const filterEnd = weeklyEnd || versionEnd;
+
+        if (filterStart || filterEnd) {
           const publishTimeField = r.fields?.['发布时间'];
           if (!publishTimeField) continue;
 
@@ -599,8 +667,8 @@ ${accountLines}
           if (isNaN(publishTime.getTime())) continue;
 
           const dateOnly = new Date(publishTime.getFullYear(), publishTime.getMonth(), publishTime.getDate());
-          const startOnly = versionStart ? new Date(versionStart.getFullYear(), versionStart.getMonth(), versionStart.getDate()) : null;
-          const endOnly = versionEnd ? new Date(versionEnd.getFullYear(), versionEnd.getMonth(), versionEnd.getDate()) : null;
+          const startOnly = filterStart ? new Date(filterStart.getFullYear(), filterStart.getMonth(), filterStart.getDate()) : null;
+          const endOnly = filterEnd ? new Date(filterEnd.getFullYear(), filterEnd.getMonth(), filterEnd.getDate()) : null;
 
           if (startOnly && dateOnly < startOnly) continue;
           if (endOnly && dateOnly > endOnly) continue;
