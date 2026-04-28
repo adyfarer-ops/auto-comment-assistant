@@ -742,8 +742,10 @@ class SyncService {
         ...dateStats,
       });
     } catch (error) {
-      const errCode = error.message?.match(/code:\s*(\d+)/)?.[1];
-      if (errCode === '1254045' || errCode === '1254060') {
+      const msg = error.message || '';
+      const errCode = msg.match(/code[:：]\s*(\d+)/)?.[1] || String(error.code);
+      const isFieldError = errCode === '1254045' || errCode === '1254060' || msg.includes('FieldNameNotFound') || msg.includes('TextFieldConvFail');
+      if (isFieldError) {
         logger.warn('Date stats field mismatch, falling back to base fields', { accountName: account.fields?.['账号名称'], code: errCode });
         try {
           await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, baseFields);
@@ -751,7 +753,7 @@ class SyncService {
           logger.error('updateAccountStats fallback failed', { accountName: account.fields?.['账号名称'], error: fallbackError.message });
         }
       } else {
-        logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: error.message, code: error.code });
+        logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: msg, code: errCode });
       }
     }
   }

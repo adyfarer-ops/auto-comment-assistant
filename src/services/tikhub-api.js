@@ -23,6 +23,8 @@ class TikHubApiService {
     if (!error.response) return true; // 网络超时/断开
     const status = error.response.status;
     if (status >= 500 || status === 429) return true;
+    // 偶发性 400（速率限制或抖动）也允许有限重试
+    if (status === 400) return true;
     return false;
   }
 
