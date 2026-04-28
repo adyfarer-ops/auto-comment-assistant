@@ -185,7 +185,10 @@ class SyncService {
           });
 
           try {
-            const works = await this.fetchPlatformWorks(platform.code, username);
+            const works = await this.fetchPlatformWorks(platform.code, username, {
+              startDate: options.startDate || startDate,
+              endDate: options.endDate || endDate,
+            });
             const filteredWorks = works.filter(work => {
               if (!work.publishTime) return false;
               const publishDate = new Date(work.publishTime);
@@ -410,9 +413,34 @@ class SyncService {
     }
   }
 
-  async fetchPlatformWorks(platformCode, username) {
+  async fetchPlatformWorks(platformCode, username, options = {}) {
     const works = [];
-    const maxPages = 20;
+    const maxPages = options.maxPages || 100;
+    const startDate = options.startDate ? new Date(options.startDate) : null;
+
+    const shouldBreakByDate = (items, getTimestamp) => {
+      if (!startDate || !items.length) return false;
+      const timestamps = items.map(getTimestamp).filter(Boolean);
+      if (!timestamps.length) return false;
+      const oldestInPage = Math.min(...timestamps);
+      return oldestInPage < startDate.getTime();
+    };
+
+    const fetchWithRetry = async (fetchFn, context) => {
+      const pageMaxRetries = 3;
+      for (let attempt = 0; attempt <= pageMaxRetries; attempt++) {
+        try {
+          return await fetchFn();
+        } catch (error) {
+          if (attempt < pageMaxRetries) {
+            logger.warn(`${context} failed, retrying page`, { username, attempt: attempt + 1, error: error.message });
+            await this._sleep(1000 * (attempt + 1));
+          } else {
+            throw error;
+          }
+        }
+      }
+    };
 
     switch (platformCode) {
       case 'TK':
@@ -421,7 +449,7 @@ class SyncService {
           let cursor = 0;
           let page = 0;
           while (page < maxPages) {
-            const videos = await tikhubApi.getTikTokUserVideos(username, cursor);
+            const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor), 'TikTok');
             const items = videos.data?.aweme_list || videos.data?.itemList || videos.data?.videos || [];
             if (items.length) {
               works.push(...items.map(v => {
@@ -442,6 +470,10 @@ class SyncService {
                 };
               }));
             }
+            if (shouldBreakByDate(items, v => v.create_time ? new Date(v.create_time * 1000).getTime() : null)) {
+              logger.info('TikTok pagination stopped by date boundary', { username, page });
+              break;
+            }
             const hasMore = videos.data?.has_more ?? videos.data?.hasMore ?? false;
             const nextCursor = videos.data?.max_cursor ?? videos.data?.cursor;
             if (!hasMore || nextCursor === undefined || nextCursor === cursor) break;
@@ -453,7 +485,7 @@ class SyncService {
           if (platformCode === 'DY') {
             logger.warn('Douyin fetch failed, returning empty works', { username, error: error.message });
           } else {
-            throw error;
+            logger.error('TikTok API failed after retries, returning partial works', { username, error: error.message, platformCode, fetchedWorks: works.length });
           }
         }
         break;
@@ -465,16 +497,16 @@ class SyncService {
           if (channel) {
             let pageToken = '';
             let page = 0;
+            const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
+            if (!uploadsPlaylistId) {
+              logger.warn('YouTube channel uploads playlist not found', { username, channelId: channel.id });
+              break;
+            }
             while (page < maxPages) {
-              const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
-              if (!uploadsPlaylistId) {
-                logger.warn('YouTube channel uploads playlist not found', { username, channelId: channel.id });
-                break;
-              }
-              const videosData = await youtubeApi.getVideos(uploadsPlaylistId, pageToken);
+              const videosData = await fetchWithRetry(() => youtubeApi.getVideos(uploadsPlaylistId, pageToken), 'YouTube');
               const videoIds = videosData.items?.map(i => i.contentDetails?.videoId).filter(Boolean) || [];
               if (videoIds.length > 0) {
-                const stats = await youtubeApi.getVideoStatistics(videoIds);
+                const stats = await fetchWithRetry(() => youtubeApi.getVideoStatistics(videoIds), 'YouTube stats');
                 works.push(...stats.map(v => ({
                   workId: v.id,
                   title: v.snippet?.title,
@@ -494,7 +526,7 @@ class SyncService {
             }
           }
         } catch (error) {
-          logger.error('YouTube API failed, possibly due to network restriction', { username, error: error.message, platformCode: 'YTB' });
+          logger.error('YouTube API failed after retries, returning partial works', { username, error: error.message, platformCode: 'YTB', fetchedWorks: works.length });
         }
         break;
       }
@@ -503,7 +535,7 @@ class SyncService {
           let paginationToken = '';
           let page = 0;
           while (page < maxPages) {
-            const posts = await tikhubApi.getInstagramUserPosts(username, paginationToken);
+            const posts = await fetchWithRetry(() => tikhubApi.getInstagramUserPosts(username, paginationToken), 'Instagram');
             const items = posts.data?.data?.items || posts.data?.edges || posts.data?.items || [];
             if (items.length) {
               works.push(...items.map(item => {
@@ -521,6 +553,10 @@ class SyncService {
                 };
               }));
             }
+            if (shouldBreakByDate(items, p => p.taken_at ? new Date(p.taken_at * 1000).getTime() : null)) {
+              logger.info('Instagram pagination stopped by date boundary', { username, page });
+              break;
+            }
             const nextToken = posts.data?.pagination_token || posts.data?.page_info?.end_cursor;
             if (!nextToken || nextToken === paginationToken) break;
             paginationToken = nextToken;
@@ -528,7 +564,7 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
-          logger.error('Instagram API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'INS', fetchedWorks: works.length });
+          logger.error('Instagram API failed after retries, returning partial works', { username, error: error.message, platformCode: 'INS', fetchedWorks: works.length });
         }
         break;
       }
@@ -537,7 +573,7 @@ class SyncService {
           let cursor = '';
           let page = 0;
           while (page < maxPages) {
-            const tweets = await tikhubApi.getXUserTweets(username, cursor);
+            const tweets = await fetchWithRetry(() => tikhubApi.getXUserTweets(username, cursor), 'X');
             let tweetList = [];
             if (tweets.data?.timeline && typeof tweets.data.timeline === 'object') {
               tweetList = Object.values(tweets.data.timeline);
@@ -557,6 +593,10 @@ class SyncService {
                 collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
               })));
             }
+            if (shouldBreakByDate(tweetList, t => t.created_at ? new Date(t.created_at).getTime() : null)) {
+              logger.info('X pagination stopped by date boundary', { username, page });
+              break;
+            }
             const nextCursor = tweets.data?.next_cursor;
             if (!nextCursor || nextCursor === cursor) break;
             cursor = nextCursor;
@@ -564,7 +604,7 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
-          logger.error('X API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'X', fetchedWorks: works.length });
+          logger.error('X API failed after retries, returning partial works', { username, error: error.message, platformCode: 'X', fetchedWorks: works.length });
         }
         break;
       }
@@ -573,7 +613,7 @@ class SyncService {
           let after = '';
           let page = 0;
           while (page < maxPages) {
-            const posts = await tikhubApi.getRedditUserPosts(username, after);
+            const posts = await fetchWithRetry(() => tikhubApi.getRedditUserPosts(username, after), 'Reddit');
             const edges = posts.data?.postFeed?.elements?.edges || posts.data?.posts || posts.data?.items || [];
             const postList = edges.map(e => e.node || e).filter(Boolean);
             if (postList.length) {
@@ -589,6 +629,10 @@ class SyncService {
                 collectCount: 0,
               })));
             }
+            if (shouldBreakByDate(postList, p => p.createdAt ? new Date(p.createdAt).getTime() : (p.created_utc ? new Date(p.created_utc * 1000).getTime() : null))) {
+              logger.info('Reddit pagination stopped by date boundary', { username, page });
+              break;
+            }
             const pageInfo = posts.data?.postFeed?.elements?.pageInfo;
             const nextAfter = pageInfo?.endCursor || posts.data?.after;
             const hasMore = pageInfo?.hasNextPage ?? (nextAfter ? true : false);
@@ -598,7 +642,7 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
-          logger.error('Reddit API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'RD', fetchedWorks: works.length });
+          logger.error('Reddit API failed after retries, returning partial works', { username, error: error.message, platformCode: 'RD', fetchedWorks: works.length });
         }
         break;
       }
@@ -607,7 +651,7 @@ class SyncService {
           let cursor = '';
           let page = 0;
           while (page < maxPages) {
-            const posts = await tikhubApi.getFacebookUserPosts(username, cursor);
+            const posts = await fetchWithRetry(() => tikhubApi.getFacebookUserPosts(username, cursor), 'Facebook');
             const postList = posts.data?.posts || posts.data?.items || [];
             if (postList.length) {
               works.push(...postList.map(p => ({
@@ -622,6 +666,10 @@ class SyncService {
                 collectCount: 0,
               })));
             }
+            if (shouldBreakByDate(postList, p => p.created_time ? new Date(p.created_time).getTime() : null)) {
+              logger.info('Facebook pagination stopped by date boundary', { username, page });
+              break;
+            }
             const nextCursor = posts.data?.paging?.cursors?.after || posts.data?.next;
             if (!nextCursor || nextCursor === cursor) break;
             cursor = nextCursor;
@@ -629,7 +677,7 @@ class SyncService {
             await this._sleep(300);
           }
         } catch (error) {
-          logger.error('Facebook API failed mid-pagination, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
+          logger.error('Facebook API failed after retries, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
         }
         break;
       }
@@ -734,6 +782,7 @@ class SyncService {
       '目前播放量': totalPlayCount,
       '已发布': String(publishedCount),
       '粉丝总量': followersCount,
+      '同步时间': this._formatDateTime(new Date()),
     };
 
     try {
