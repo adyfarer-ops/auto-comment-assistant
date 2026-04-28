@@ -249,7 +249,16 @@ module.exports = {
     const allRows = [headers, ...rows];
     return {
       block_type: 14,
-      table: { table_width: headers.length, table_rows: allRows.length, table_columns: headers.length, merge_info: [] },
+      table: {
+        property: {
+          row_size: allRows.length,
+          column_size: headers.length,
+        },
+        table_width: headers.length,
+        table_rows: allRows.length,
+        table_columns: headers.length,
+        merge_info: [],
+      },
       children: allRows.map(row => ({
         block_type: 15,
         table_cell: { children: row.map(cell => ({ block_type: 2, text: { elements: [{ text_run: { content: cell } }] } })) },
