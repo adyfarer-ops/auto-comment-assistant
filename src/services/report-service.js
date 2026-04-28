@@ -139,7 +139,7 @@ class ReportService {
   }
 
   extractPlatformCode(accountName) {
-    const upper = accountName.toUpperCase();
+    const upper = (accountName || '').toUpperCase();
     if (upper.includes('TK')) return 'TK';
     if (upper.includes('YTB')) return 'YTB';
     if (upper.includes('INS')) return 'INS';

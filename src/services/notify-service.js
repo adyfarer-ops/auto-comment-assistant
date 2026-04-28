@@ -154,8 +154,11 @@ class NotifyService {
             },
           },
           {
-            tag: 'note',
-            elements: [{ tag: 'plain_text', content: `⏱️ ${time}` }],
+            tag: 'div',
+            text: {
+              tag: 'lark_md',
+              content: `⏱️ ${time}`,
+            },
           },
         ],
       },

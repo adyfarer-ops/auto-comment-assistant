@@ -16,8 +16,12 @@ const PLATFORM_PATTERNS = [
 
 class PlatformResolver {
   detectPlatform(url) {
+    let urlStr = url;
+    if (typeof url !== 'string') {
+      urlStr = url?.link || url?.url || url?.text || '';
+    }
     for (const platform of PLATFORM_PATTERNS) {
-      if (platform.regex.test(url)) {
+      if (platform.regex.test(urlStr)) {
         return platform;
       }
     }
@@ -25,7 +29,7 @@ class PlatformResolver {
   }
 
   detectPlatformFromName(name) {
-    const upperName = name.toUpperCase();
+    const upperName = (name || '').toUpperCase();
     for (const platform of PLATFORM_PATTERNS) {
       if (upperName.includes(platform.code)) {
         return platform;

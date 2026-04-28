@@ -105,9 +105,10 @@ module.exports = {
   },
 
   extractPlatform(accountName) {
+    const name = accountName || '';
     const map = { TK: 'TikTok', YTB: 'YouTube', INS: 'Instagram', X: 'X', RD: 'Reddit', FB: 'Facebook' };
-    for (const [code, name] of Object.entries(map)) {
-      if (accountName.toUpperCase().includes(code)) return name;
+    for (const [code, platformName] of Object.entries(map)) {
+      if (name.toUpperCase().includes(code)) return platformName;
     }
     return 'Unknown';
   },
