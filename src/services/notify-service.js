@@ -6,6 +6,17 @@ const aiService = require('./ai-service');
 class NotifyService {
   constructor() {
     this.baseUrl = 'https://open.feishu.cn/open-apis/im/v1';
+    this.notificationCache = new Map();
+    this.dedupTtlMs = 5 * 60 * 1000; // 5 minutes
+  }
+
+  _shouldSendNotification(key) {
+    const lastSent = this.notificationCache.get(key);
+    if (lastSent && Date.now() - lastSent < this.dedupTtlMs) {
+      return false;
+    }
+    this.notificationCache.set(key, Date.now());
+    return true;
   }
 
   async sendMessage(chatId, content) {
@@ -171,6 +182,12 @@ class NotifyService {
     const chatId = process.env.NOTIFY_CHAT_ID;
     if (!chatId) {
       logger.warn('NOTIFY_CHAT_ID not set, skipping sync notification');
+      return;
+    }
+
+    const dedupKey = `sync:${projectName}:${status}`;
+    if (!this._shouldSendNotification(dedupKey)) {
+      logger.info('Skipping duplicate sync notification', { projectName, status, dedupKey });
       return;
     }
 

@@ -58,7 +58,6 @@ router.post('/weekly-report/generate', async (req, res, next) => {
           'traceId': traceId,
           '触发来源': req.body.triggerSource || 'API',
         });
-        await notifyService.sendError(process.env.NOTIFY_CHAT_ID, projectName, error);
       }
     })();
   } catch (error) {
