@@ -18,6 +18,116 @@ class WeeklyReportService {
     this.projectMgmtAppToken = token;
   }
 
+  formatPeriodTitle(startDate, endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    const sMonth = s.getMonth() + 1;
+    const sDay = s.getDate();
+    const eMonth = e.getMonth() + 1;
+    const eDay = e.getDate();
+
+    if (sMonth === eMonth) {
+      return `${sMonth}.${String(sDay).padStart(2, '0')}-${String(eDay).padStart(2, '0')}`;
+    }
+    return `${sMonth}.${String(sDay).padStart(2, '0')}-${eMonth}.${String(eDay).padStart(2, '0')}`;
+  }
+
+  async readTopCycleFromSheet(sheetToken) {
+    const sheetName = 'Sheet1';
+    const maxRows = 200;
+    const range = `${sheetName}!A1:M${maxRows}`;
+
+    try {
+      const values = await feishuSpreadsheet.readValues(sheetToken, range);
+      if (!values || values.length === 0) {
+        return null;
+      }
+
+      let titleRowIndex = -1;
+      let headerRowIndex = -1;
+      const headerKeywords = ['账号编号', '账号类型', '账号名称'];
+
+      for (let i = 0; i < values.length; i++) {
+        const row = values[i];
+        if (!row || row.every(cell => !cell)) continue;
+
+        const firstCell = String(row[0] || '');
+        if (headerKeywords.some(k => firstCell.includes(k))) {
+          headerRowIndex = i;
+          if (titleRowIndex === -1 && i > 0) {
+            for (let t = i - 1; t >= 0; t--) {
+              if (values[t] && values[t].some(cell => cell)) {
+                titleRowIndex = t;
+                break;
+              }
+            }
+          }
+          break;
+        }
+      }
+
+      if (headerRowIndex === -1) {
+        return null;
+      }
+
+      if (titleRowIndex === -1) {
+        titleRowIndex = 0;
+      }
+
+      const periodTitle = String(values[titleRowIndex][0] || '');
+      const headers = values[headerRowIndex] || [];
+
+      const accounts = [];
+      const opsKeywords = ['运营进展', 'Highlights', 'Lowlights', '风险', '规划'];
+      for (let i = headerRowIndex + 1; i < values.length; i++) {
+        const row = values[i];
+        if (!row || row.every(cell => !cell)) {
+          if (i + 1 < values.length) {
+            const nextFirst = String(values[i + 1][0] || '');
+            if (opsKeywords.some(k => nextFirst.includes(k))) {
+              break;
+            }
+          }
+          continue;
+        }
+
+        const firstCell = String(row[0] || '');
+        if (opsKeywords.some(k => firstCell.includes(k))) {
+          break;
+        }
+
+        const account = { rowIndex: i };
+        headers.forEach((h, idx) => {
+          const headerName = String(h || '');
+          if (headerName.includes('编号')) account.number = row[idx];
+          if (headerName.includes('类型')) account.type = row[idx];
+          if (headerName.includes('供应商')) account.supplier = row[idx];
+          if (headerName.includes('区域')) account.region = row[idx];
+          if (headerName.includes('内容类型')) account.contentType = row[idx];
+          if (headerName.includes('平台')) account.platform = row[idx];
+          if (headerName.includes('userid')) account.userid = row[idx];
+          if (headerName.includes('账号名称')) account.name = row[idx];
+          if (headerName.includes('账号链接')) account.link = row[idx];
+        });
+
+        if (account.name || account.number) {
+          accounts.push(account);
+        }
+      }
+
+      return {
+        periodTitle,
+        headers,
+        accounts,
+        titleRowIndex,
+        headerRowIndex,
+      };
+    } catch (error) {
+      logger.error('Failed to read top cycle from sheet', { sheetToken, error: error.message });
+      return null;
+    }
+  }
+
   async generateWeeklyReport(projectRecord) {
     const fields = projectRecord.fields;
     const planTableId = fields['表格ID'];
