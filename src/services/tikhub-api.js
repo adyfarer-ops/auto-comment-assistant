@@ -77,17 +77,26 @@ class TikHubApiService {
     });
   }
 
-  // Instagram (v2 endpoint aligned with old project)
+  // Instagram (v3 primary, v2 fallback)
   async getInstagramUserInfo(username) {
     return this.request('GET', '/api/v1/instagram/v3/get_user_profile', { username });
   }
 
-  async getInstagramUserPosts(username, paginationToken = '') {
-    return this.request('GET', '/api/v1/instagram/v2/fetch_user_posts', {
-      username,
-      pagination_token: paginationToken,
-      count: 50,
-    });
+  async getInstagramUserPosts(username, after = '') {
+    try {
+      return this.request('GET', '/api/v1/instagram/v3/get_user_posts', {
+        username,
+        after,
+        count: 50,
+      });
+    } catch (error) {
+      logger.warn('Instagram v3 failed, falling back to v2', { username, error: error.message });
+      return this.request('GET', '/api/v1/instagram/v2/fetch_user_posts', {
+        username,
+        pagination_token: after,
+        count: 50,
+      });
+    }
   }
 
   // X (Twitter)
