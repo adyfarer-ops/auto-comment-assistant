@@ -32,13 +32,8 @@ class SyncService {
 
   _formatDateTime(date) {
     const d = date || new Date();
-    // 返回飞书日期字段兼容格式：yyyy/MM/dd HH:mm
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const h = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${y}/${m}/${day} ${h}:${min}`;
+    // 飞书旧表日期字段只接受毫秒时间戳数字
+    return d.getTime();
   }
 
   async syncProject(projectRecord, options = {}) {
@@ -764,6 +759,20 @@ class SyncService {
     if (!detailTableId || !works.length) return { createdCount: 0, updatedCount: 0 };
 
     const now = this._formatDateTime();
+
+    // 查询表字段类型，兼容新旧表字段差异
+    let publishTimeIsDate = false;
+    let linkIsUrl = false;
+    try {
+      const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, detailTableId);
+      for (const f of tableFields?.items || []) {
+        if (f.field_name === '发布时间' && f.type === 5) publishTimeIsDate = true;
+        if (f.field_name === '作品链接' && f.type === 15) linkIsUrl = true;
+      }
+    } catch (e) {
+      logger.warn('Failed to get table fields, falling back to safe mode', { detailTableId, error: e.message });
+    }
+
     const allRecords = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
     const existingMap = new Map();
     const duplicateRecordIds = [];
@@ -781,7 +790,7 @@ class SyncService {
 
     // 对 works 去重，防止 API 返回重复数据导致重复插入
     const uniqueWorks = [...new Map(works.map(w => [String(w.workId), w])).values()];
-    logger.info('Detail table dedup check', { detailTableId, allRecordsCount: allRecords.length, existingMapSize: existingMap.size, worksCount: works.length, uniqueWorksCount: uniqueWorks.length });
+    logger.info('Detail table dedup check', { detailTableId, allRecordsCount: allRecords.length, existingMapSize: existingMap.size, worksCount: works.length, uniqueWorksCount: uniqueWorks.length, publishTimeIsDate, linkIsUrl });
 
     const toCreate = [];
     const toUpdate = [];
@@ -803,13 +812,17 @@ class SyncService {
       };
       // 旧表可能把 作品链接 设为 URL 类型、发布时间 设为日期类型，
       // 空字符串或不合法值会导致 FieldConvFail，只传有效值
-      if (work.link && String(work.link).match(/^https?:\/\//)) {
+      if (work.link && (!linkIsUrl || String(work.link).match(/^https?:\/\//))) {
         fields['作品链接'] = work.link;
       }
       if (work.publishTime) {
-        // 旧表发布时间可能是日期类型，统一转成 yyyy/MM/dd 格式兼容飞书日期字段
-        const pt = String(work.publishTime).replace(/-/g, '/');
-        fields['发布时间'] = pt;
+        if (publishTimeIsDate) {
+          // 旧表日期字段只接受毫秒时间戳
+          const ts = new Date(String(work.publishTime).replace(/-/g, '/')).getTime();
+          if (!isNaN(ts)) fields['发布时间'] = ts;
+        } else {
+          fields['发布时间'] = work.publishTime;
+        }
       }
       const recordId = existingMap.get(String(work.workId));
       if (recordId) {
