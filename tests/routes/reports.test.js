@@ -71,6 +71,9 @@ jest.mock('../../src/services/feishu-auth', () => ({
 
 jest.mock('../../src/services/feishu-spreadsheet', () => ({
   writeValues: jest.fn().mockResolvedValue({}),
+  readValues: jest.fn().mockResolvedValue([]),
+  getSheetMetadata: jest.fn().mockResolvedValue({ sheets: [{ sheet_id: '0' }] }),
+  insertRows: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock('../../src/services/ai-service', () => ({
