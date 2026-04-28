@@ -31,10 +31,9 @@ class WeeklyReportService {
     return `${sMonth}.${String(sDay).padStart(2, '0')}-${eMonth}.${String(eDay).padStart(2, '0')}`;
   }
 
-  async readTopCycleFromSheet(sheetToken) {
-    const sheetName = 'Sheet1';
+  async readTopCycleFromSheet(sheetToken, sheetId) {
     const maxRows = 200;
-    const range = `${sheetName}!A1:M${maxRows}`;
+    const range = `${sheetId}!A1:M${maxRows}`;
 
     try {
       const values = await feishuSpreadsheet.readValues(sheetToken, range);
@@ -130,8 +129,8 @@ class WeeklyReportService {
   async generateWeeklyReport(projectRecord) {
     const fields = projectRecord.fields;
     const planTableId = fields['表格ID'];
-    const startDate = fields['周报开始日期'] ? new Date(fields['周报开始日期']) : null;
-    const endDate = fields['周报结束日期'] ? new Date(fields['周报结束日期']) : null;
+    const startDate = fields['周报开始日期'] ? this._parseDate(fields['周报开始日期']) : null;
+    const endDate = fields['周报结束日期'] ? this._parseDate(fields['周报结束日期']) : null;
     const sheetToken = fields['周报Sheet'];
 
     if (!startDate || !endDate) {
@@ -140,8 +139,8 @@ class WeeklyReportService {
 
     logger.info('Generating weekly report', {
       projectName: fields['项目名称'],
-      startDate: startDate.toISOString().split('T')[0],
-      endDate: endDate.toISOString().split('T')[0],
+      startDate: this._formatDate(startDate),
+      endDate: this._formatDate(endDate),
       sheetToken,
     });
 
@@ -159,7 +158,7 @@ class WeeklyReportService {
 
     const reportData = {
       projectName: fields['项目名称'],
-      period: `${startDate.toISOString().split('T')[0]} ~ ${endDate.toISOString().split('T')[0]}`,
+      period: `${this._formatDate(startDate)} ~ ${this._formatDate(endDate)}`,
       accounts: [],
       summary: {
         totalAccounts: accounts.length,
@@ -177,15 +176,16 @@ class WeeklyReportService {
       const platform = this.extractPlatform(accountName);
 
         // 从详情表按版本周期统计（更新后+历史数据），不用周报周期过滤
-      const versionStart = fields['版本开始日期'] ? new Date(fields['版本开始日期']) : null;
-      const versionEnd = fields['版本结束日期'] ? new Date(fields['版本结束日期']) : null;
+      const versionStart = fields['版本开始日期'] ? this._parseDate(fields['版本开始日期']) : null;
+      const versionEnd = fields['版本结束日期'] ? this._parseDate(fields['版本结束日期']) : null;
       const weeklyStart = startDate;
       const weeklyEnd = endDate;
+      const homeLink = this._extractLink(af['主页链接']);
       const detailStats = await this.calculateAccountStatsFromDetail(
         fields['项目名称'],
         accountName,
         platform,
-        af['主页链接'],
+        homeLink,
         versionStart,
         versionEnd,
         weeklyStart,
@@ -485,16 +485,24 @@ ${accountLines}
   }
 
   async writeToSpreadsheet(sheetToken, reportData) {
-    const sheetName = 'Sheet1';
+    // 先获取 sheetId（API 使用 sheetId 而非 title）
+    let sheetId;
+    try {
+      const meta = await feishuSpreadsheet.getSheetMetadata(sheetToken);
+      sheetId = meta?.sheets?.[0]?.sheetId || '0';
+    } catch (error) {
+      logger.error('Failed to get sheet metadata', { sheetToken, error: error.message });
+      throw error;
+    }
 
     // 1. 读取现有顶部周期作为模板
-    const template = await this.readTopCycleFromSheet(sheetToken);
+    const template = await this.readTopCycleFromSheet(sheetToken, sheetId);
 
     if (!template || !template.accounts || template.accounts.length === 0) {
       logger.warn('No existing cycle template found in sheet, falling back to simplified write', { sheetToken });
       // 兜底：简化写入
       const headers = ['账号名称', '平台', '已发布', '保底条数', '播放量', '发布完成率', '负责人'];
-      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:G1`, [headers]);
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetId}!A1:G1`, [headers]);
       const rows = reportData.accounts.map((a) => [
         a.name,
         a.platform,
@@ -505,7 +513,7 @@ ${accountLines}
         a.responsible,
       ]);
       if (rows.length > 0) {
-        await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A2:G${rows.length + 1}`, rows);
+        await feishuSpreadsheet.writeValues(sheetToken, `${sheetId}!A2:G${rows.length + 1}`, rows);
       }
       return;
     }
@@ -515,13 +523,11 @@ ${accountLines}
 
     // 2. 在 sheet 顶部插入空行
     try {
-      const meta = await feishuSpreadsheet.getSheetMetadata(sheetToken);
-      const sheetId = meta?.sheets?.[0]?.sheet_id || '0';
       await feishuSpreadsheet.insertRows(sheetToken, sheetId, 0, insertRowCount);
       logger.info('Inserted rows at top of sheet', { sheetToken, rowCount: insertRowCount });
     } catch (error) {
       logger.error('Failed to insert rows at top, falling back to full rewrite', { sheetToken, error: error.message });
-      await this._fallbackWriteToSpreadsheet(sheetToken, reportData, template);
+      await this._fallbackWriteToSpreadsheet(sheetToken, sheetId, reportData, template);
       return;
     }
 
@@ -529,7 +535,7 @@ ${accountLines}
     const { rows, maxCol } = this._buildCycleRows(template, reportData);
     try {
       const endRow = rows.length;
-      await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
+      await feishuSpreadsheet.writeValues(sheetToken, `${sheetId}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
       logger.info('Weekly report cycle block written to sheet top', { sheetToken, accountCount });
     } catch (error) {
       logger.error('Failed to write cycle block to sheet', { sheetToken, error: error.message });
@@ -625,12 +631,37 @@ ${accountLines}
     return result;
   }
 
-  async _fallbackWriteToSpreadsheet(sheetToken, reportData, template) {
+  _parseDate(value) {
+    if (!value) return null;
+    if (typeof value === 'number') {
+      // 飞书时间戳可能是秒级(10位)或毫秒级(13位)
+      const isSeconds = String(Math.floor(value)).length <= 10;
+      return new Date(isSeconds ? value * 1000 : value);
+    }
+    return new Date(String(value).replace(/-/g, '/'));
+  }
+
+  _formatDate(date) {
+    if (!date) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  _extractLink(value) {
+    if (!value) return '';
+    if (typeof value === 'object') {
+      return value.link || value.url || '';
+    }
+    return String(value);
+  }
+
+  async _fallbackWriteToSpreadsheet(sheetToken, sheetId, reportData, template) {
     logger.warn('Using fallback full-rewrite for weekly report sheet', { sheetToken });
-    const sheetName = 'Sheet1';
     const { rows, maxCol } = this._buildCycleRows(template, reportData);
     const endRow = rows.length;
-    await feishuSpreadsheet.writeValues(sheetToken, `${sheetName}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
+    await feishuSpreadsheet.writeValues(sheetToken, `${sheetId}!A1:${this._colIndexToLetter(maxCol - 1)}${endRow}`, rows);
     logger.info('Fallback weekly report cycle block written', { sheetToken, accountCount: template.accounts.length });
   }
 

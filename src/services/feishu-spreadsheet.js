@@ -50,7 +50,7 @@ class FeishuSpreadsheetService {
   }
 
   async writeValues(spreadsheetToken, range, values) {
-    return this.request('PUT', spreadsheetToken, `/values/${range}`, {
+    return this.request('PUT', spreadsheetToken, '/values', {
       valueRange: {
         range,
         values,
