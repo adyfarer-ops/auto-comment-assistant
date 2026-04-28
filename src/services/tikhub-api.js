@@ -85,20 +85,12 @@ class TikHubApiService {
   }
 
   async getInstagramUserPosts(username, after = '') {
-    try {
-      return this.request('GET', '/api/v1/instagram/v3/get_user_posts', {
-        username,
-        after,
-        count: 50,
-      });
-    } catch (error) {
-      logger.warn('Instagram v3 failed, falling back to v2', { username, error: error.message });
-      return this.request('GET', '/api/v1/instagram/v2/fetch_user_posts', {
-        username,
-        pagination_token: after,
-        count: 50,
-      });
-    }
+    // fetch_user_reels 才有正确的播放量(play_count)，fetch_user_posts 的播放量为 null
+    return this.request('GET', '/api/v1/instagram/v2/fetch_user_reels', {
+      username,
+      pagination_token: after,
+      count: 50,
+    });
   }
 
   // X (Twitter)
