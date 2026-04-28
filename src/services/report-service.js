@@ -272,6 +272,13 @@ class ReportService {
         return b;
       });
 
+      logger.info('Writing docx blocks', {
+        parentBlockId,
+        index: i,
+        chunkSize: strippedChunk.length,
+        blockTypes: strippedChunk.map(b => b.block_type),
+      });
+
       try {
         const res = await axios.post(
           `https://open.feishu.cn/open-apis/docx/v1/documents/${documentId}/blocks/${parentBlockId}/children`,
@@ -296,6 +303,11 @@ class ReportService {
           const created = createdBlocks[idx];
           const childBlocks = childrenMap.get(idx);
           if (childBlocks && childBlocks.length > 0 && created.block_id) {
+            logger.info('Recursing into block children', {
+              parentBlockId: created.block_id,
+              blockType: created.block_type,
+              childCount: childBlocks.length,
+            });
             await this._writeBlocksRecursive(documentId, created.block_id, childBlocks, token);
           }
         }
