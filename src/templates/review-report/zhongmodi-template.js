@@ -122,8 +122,11 @@ module.exports = {
     blocks.push(this.text(`统计周期: ${data.versionPeriod}`));
     blocks.push({ block_type: 22, divider: {} }); // divider
 
-    // 一、数据总览
+    // 一、数据总览&KPI完成情况
     blocks.push(this.heading2('一、数据总览&KPI完成情况'));
+    if (data.bitableUrl) {
+      blocks.push(this.linkText('点击链接可查看完整电子表格：', data.bitableUrl));
+    }
     blocks.push(this.text(`总账号数: ${data.totalAccounts}`));
     blocks.push(this.text(`总发布数: ${data.totalPublished}`));
     blocks.push(this.text(`总播放量: ${data.totalPlayCount.toLocaleString()}`));
@@ -245,6 +248,22 @@ module.exports = {
   text(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '' } }] } }; },
   bold(text) { return { block_type: 2, text: { elements: [{ text_run: { content: text || '', text_element_style: { bold: true } } }] } }; },
   bullet(text) { return { block_type: 12, bullet: { elements: [{ text_run: { content: text || '' } }] } }; },
+  linkText(label, url) {
+    return {
+      block_type: 2,
+      text: {
+        elements: [
+          { text_run: { content: label || '', text_element_style: { bold: true } } },
+          {
+            text_run: {
+              content: url || '',
+              text_element_style: { link: { url: url || '' } },
+            },
+          },
+        ],
+      },
+    };
+  },
   table(headers, rows) {
     const allRows = [headers, ...rows];
     return {

@@ -52,6 +52,14 @@ class ReportService {
       worksMap
     );
 
+    // 生成数据总览 Bitable（多维表格）
+    try {
+      const bitableUrl = await this.createDataOverviewBitable(fields['项目名称'], accounts, worksMap);
+      reportData.bitableUrl = bitableUrl;
+    } catch (error) {
+      logger.error('Data overview bitable creation failed', { error: error.message });
+    }
+
     // 生成 AI 运营建议（模板特定 prompt）
     let aiContent = {};
     try {
@@ -62,7 +70,7 @@ class ReportService {
         '[成功要素]\n...\n\n' +
         '[核心问题]\n...\n\n' +
         '[优化方向]\n...\n';
-      const aiSuggestions = await aiService.callAnyProvider(aiPrompt);
+      const aiSuggestions = await aiService.callAnyProvider(aiPrompt, undefined, { timeout: 120000 });
       aiContent = this.parseAISuggestions(aiSuggestions);
     } catch (error) {
       logger.error('AI suggestions generation failed', { error: error.message });
@@ -189,6 +197,89 @@ class ReportService {
     return String(value);
   }
 
+  async createDataOverviewBitable(projectName, accounts, worksMap) {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const tableName = `${projectName} 复盘数据 (${dateStr})`;
+
+    // Collect all unique field names from accounts
+    const allFieldNames = new Set();
+    for (const account of accounts) {
+      for (const key of Object.keys(account.fields)) {
+        allFieldNames.add(key);
+      }
+    }
+
+    // Known numeric fields for type detection
+    const numericFields = new Set([
+      '目前播放量', '已发布', '粉丝总量', '发布完成率',
+      '目标发布量', '目标播放量', '周发布目标', '粉丝增长',
+    ]);
+
+    // Build field definitions
+    const fields = [];
+    for (const name of allFieldNames) {
+      if (numericFields.has(name)) {
+        fields.push({ field_name: name, type: 2 });
+      } else {
+        fields.push({ field_name: name, type: 1 });
+      }
+    }
+
+    // Add computed fields
+    fields.push({ field_name: '互动量', type: 2 });
+    fields.push({ field_name: '互动率(%)', type: 2 });
+    fields.push({ field_name: '稿均播放', type: 2 });
+
+    // Create table
+    logger.info('Creating data overview bitable', { projectName, tableName, fieldCount: fields.length });
+    const tableResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName, fields);
+    const tableId = tableResult.table_id;
+
+    // Build records
+    const records = [];
+    for (const account of accounts) {
+      const af = account.fields;
+      const works = worksMap.get(account.record_id) || [];
+
+      const playCount = parseInt(af['目前播放量']) || 0;
+      const published = parseInt(af['已发布']) || 0;
+      const interactCount = works.reduce((sum, w) =>
+        sum + (w.diggCount || 0) + (w.commentCount || 0) + (w.shareCount || 0) + (w.collectCount || 0), 0);
+      const interactRate = playCount > 0 ? parseFloat(((interactCount / playCount) * 100).toFixed(2)) : 0;
+      const avgPlay = published > 0 ? Math.round(playCount / published) : 0;
+
+      const record = {};
+      for (const key of allFieldNames) {
+        let value = af[key];
+        if (value === undefined || value === null) {
+          value = numericFields.has(key) ? 0 : '';
+        } else if (typeof value === 'object') {
+          value = value.link || value.url || value.text || JSON.stringify(value);
+        } else if (numericFields.has(key)) {
+          const num = parseFloat(value);
+          value = isNaN(num) ? 0 : num;
+        } else {
+          value = String(value);
+        }
+        record[key] = value;
+      }
+
+      record['互动量'] = interactCount;
+      record['互动率(%)'] = interactRate;
+      record['稿均播放'] = avgPlay;
+
+      records.push(record);
+    }
+
+    // Batch create records
+    if (records.length > 0) {
+      await feishuBitable.batchCreateRecords(this.projectMgmtAppToken, tableId, records);
+      logger.info('Data overview bitable records created', { tableId, recordCount: records.length });
+    }
+
+    return `https://vcnsfx7fytb0.feishu.cn/base/${this.projectMgmtAppToken}?table=${tableId}`;
+  }
+
   _sanitizeBlocks(blocks) {
     const sanitizeElement = (e) => {
       if (e.text_run) {
@@ -231,6 +322,10 @@ class ReportService {
       // 清洗列表块
       if (b.block_type === 12 && b.bullet?.elements) {
         b.bullet.elements = filterElements(b.bullet.elements.map(sanitizeElement));
+      }
+      // 清洗引用块
+      if (b.block_type === 15 && b.quote?.elements) {
+        b.quote.elements = filterElements(b.quote.elements.map(sanitizeElement));
       }
       // 清洗表格单元格（兼容旧结构）
       if (b.block_type === 32 && b.table_cell?.children) {

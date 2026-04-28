@@ -133,16 +133,16 @@ class AIService {
     }
   }
 
-  async callAnyProvider(prompt, systemPrompt = '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。') {
+  async callAnyProvider(prompt, systemPrompt = '你是一位资深的游戏海外社媒运营专家，擅长数据分析和内容策略。', options = {}) {
     const messages = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ];
 
     const providers = [
-      { name: 'moonshot', apiKey: config.ai.moonshot.apiKey, fn: () => this.callMoonshotWithMessages(messages) },
-      { name: 'doubao', apiKey: config.ai.doubao.apiKey, fn: () => this.callDoubaoWithMessages(messages) },
-      { name: 'deepseek', apiKey: config.ai.deepseek.apiKey, fn: () => this.callDeepSeekWithMessages(messages) },
+      { name: 'deepseek', apiKey: config.ai.deepseek.apiKey, fn: () => this.callDeepSeekWithMessages(messages, options) },
+      { name: 'moonshot', apiKey: config.ai.moonshot.apiKey, fn: () => this.callMoonshotWithMessages(messages, options) },
+      { name: 'doubao', apiKey: config.ai.doubao.apiKey, fn: () => this.callDoubaoWithMessages(messages, options) },
     ].filter(p => p.apiKey);
 
     if (providers.length === 0) {
@@ -174,35 +174,36 @@ class AIService {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async callMoonshotWithMessages(messages) {
+  async callMoonshotWithMessages(messages, options = {}) {
     const url = `${config.ai.moonshot.baseUrl}/chat/completions`;
     const data = { model: 'moonshot-v1-8k', messages, temperature: 0.7 };
     const headers = { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' };
-    return this._callWithRetry('moonshot', url, data, headers);
+    return this._callWithRetry('moonshot', url, data, headers, options);
   }
 
-  async callDoubaoWithMessages(messages) {
+  async callDoubaoWithMessages(messages, options = {}) {
     const url = `${config.ai.doubao.baseUrl}/chat/completions`;
     const data = { model: config.ai.doubao.model, messages, temperature: 0.7 };
     const headers = { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' };
-    return this._callWithRetry('doubao', url, data, headers);
+    return this._callWithRetry('doubao', url, data, headers, options);
   }
 
-  async callDeepSeekWithMessages(messages) {
+  async callDeepSeekWithMessages(messages, options = {}) {
     const url = `${config.ai.deepseek.baseUrl}/chat/completions`;
     const data = { model: config.ai.deepseek.model, messages, temperature: 0.7 };
     const headers = { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' };
-    return this._callWithRetry('deepseek', url, data, headers);
+    return this._callWithRetry('deepseek', url, data, headers, options);
   }
 
-  async _callWithRetry(name, url, data, headers) {
+  async _callWithRetry(name, url, data, headers, options = {}) {
     const maxRetries = 2;
+    const timeout = options.timeout || 60000;
     let lastError;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const response = await axios.post(url, data, {
           headers,
-          timeout: 60000,
+          timeout,
           httpsAgent: this.agent,
         });
         return response.data.choices[0].message.content;
