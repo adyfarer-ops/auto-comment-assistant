@@ -180,13 +180,17 @@ class WeeklyReportService {
         // 从详情表按版本周期统计（更新后+历史数据），不用周报周期过滤
       const versionStart = fields['版本开始日期'] ? new Date(fields['版本开始日期']) : null;
       const versionEnd = fields['版本结束日期'] ? new Date(fields['版本结束日期']) : null;
+      const weeklyStart = startDate;
+      const weeklyEnd = endDate;
       const detailStats = await this.calculateAccountStatsFromDetail(
         fields['项目名称'],
         accountName,
         platform,
         af['主页链接'],
         versionStart,
-        versionEnd
+        versionEnd,
+        weeklyStart,
+        weeklyEnd
       );
 
       // 如果详情表统计失败，回退到主表数据
@@ -215,12 +219,23 @@ class WeeklyReportService {
       }, 0) / accounts.length).toFixed(2) + '%';
     }
 
+    reportData.startDate = startDate;
+    reportData.endDate = endDate;
+    reportData.highlights = '';
+    reportData.lowlights = '';
+    reportData.nextSteps = '';
+
     // AI 分析建议
     let aiSuggestions = '';
     try {
       const aiPrompt = this.buildAIPrompt(reportData);
       aiSuggestions = await aiService.callAnyProvider(aiPrompt);
       logger.info('AI suggestions generated for weekly report');
+
+      const parsed = this.parseAISuggestions(aiSuggestions);
+      reportData.highlights = parsed.highlights;
+      reportData.lowlights = parsed.lowlights;
+      reportData.nextSteps = parsed.nextSteps;
     } catch (error) {
       logger.error('AI suggestions generation failed', { error: error.message });
       aiSuggestions = 'AI 建议生成失败，请稍后重试。';
