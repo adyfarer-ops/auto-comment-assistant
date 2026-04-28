@@ -372,10 +372,11 @@ class ProjectService {
 
       const fieldIdMap = {};
 
-      // 1-4 基础字段
+      // 1-5 基础字段
       for (const f of [
         { field_name: '账号名称', type: 1 },
         { field_name: '主页链接', type: 15 },
+        { field_name: '平台', type: 1 },
         { field_name: '负责人', type: 1 },
         { field_name: '制作', type: 1 },
       ]) {
@@ -385,7 +386,7 @@ class ProjectService {
         await this._sleep(300);
       }
 
-      // 5 保底条数
+      // 6 保底条数
       const minPostsRes = await feishuBitable.createField(this.projectMgmtAppToken, newTableId, {
         field_name: '保底条数', type: 2, property: { formatter: '0' },
       });
@@ -533,6 +534,7 @@ class ProjectService {
     const baseFields = [
       { field_name: '账号名称', type: 1 },
       { field_name: '主页链接', type: 15 },
+      { field_name: '平台', type: 1 },
       { field_name: '负责人', type: 1 },
       { field_name: '制作', type: 1 },
       { field_name: '保底条数', type: 2, property: { formatter: '0' } },

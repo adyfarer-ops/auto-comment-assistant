@@ -214,7 +214,7 @@ class SyncService {
               const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
               createdCount = syncResult.createdCount || 0;
               updatedCount = syncResult.updatedCount || 0;
-              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount);
+              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code);
               totalWorks += filteredWorks.length;
             } else {
               skippedCount = works.length - filteredWorks.length;
@@ -371,7 +371,7 @@ class SyncService {
 
       if (detailTableId) {
         await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
-        await this.updateAccountStats(account, planTableId, works, followersCount);
+        await this.updateAccountStats(account, planTableId, works, followersCount, platform.code);
       }
 
       logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
@@ -822,7 +822,7 @@ class SyncService {
     return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
   }
 
-  async updateAccountStats(account, planTableId, works, followersCount = 0) {
+  async updateAccountStats(account, planTableId, works, followersCount = 0, platformCode = '') {
     if (!works || works.length === 0) {
       logger.warn('Skipping account stats update due to empty works', { accountName: account.fields?.['账号名称'] });
       return;
@@ -837,10 +837,11 @@ class SyncService {
       '目前播放量': totalPlayCount,
       '已发布': publishedCount,
       '粉丝总量': followersCount,
+      '平台': platformCode,
     };
 
     try {
-      // 获取主表字段列表，过滤掉不存在的日期字段，避免 FieldNameNotFound 错误
+      // 获取主表字段列表，过滤掉不存在的字段，避免 FieldNameNotFound 错误（兼容旧表）
       const tableFields = await feishuBitable.getTableFields(this.projectMgmtAppToken, planTableId);
       const existingFieldNames = new Set((tableFields?.items || []).map(f => f.field_name));
       const filteredDateStats = {};
@@ -850,7 +851,12 @@ class SyncService {
         }
       }
 
-      const fieldsToUpdate = { ...baseFields, ...filteredDateStats };
+      const fieldsToUpdate = {};
+      for (const [key, value] of Object.entries({ ...baseFields, ...filteredDateStats })) {
+        if (existingFieldNames.has(key)) {
+          fieldsToUpdate[key] = value;
+        }
+      }
       await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, fieldsToUpdate);
       logger.info('Account stats updated', { accountName: account.fields?.['账号名称'], planTableId, dateFieldsCount: Object.keys(filteredDateStats).length });
     } catch (error) {
