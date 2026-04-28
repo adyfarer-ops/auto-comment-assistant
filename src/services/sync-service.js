@@ -406,7 +406,7 @@ class SyncService {
         }
         case 'RD': {
           const info = await tikhubApi.getRedditUserInfo(username);
-          return parseInt(info?.data?.redditorInfoByName?.karma?.total) || 0;
+          return parseInt(info?.data?.redditorInfoByName?.profile?.subscribersCount) || 0;
         }
         case 'FB': {
           const info = await tikhubApi.getFacebookUserInfo(username);
