@@ -67,12 +67,16 @@ class WeeklyReportService {
       const responsible = af['负责人'] || '';
       const platform = this.extractPlatform(accountName);
 
-      // 从详情表统计全量数据（更新后+历史数据），确保和表格一致
+        // 从详情表按版本周期统计（更新后+历史数据），不用周报周期过滤
+      const versionStart = fields['版本开始日期'] ? new Date(fields['版本开始日期']) : null;
+      const versionEnd = fields['版本结束日期'] ? new Date(fields['版本结束日期']) : null;
       const detailStats = await this.calculateAccountStatsFromDetail(
         fields['项目名称'],
         accountName,
         platform,
-        af['主页链接']
+        af['主页链接'],
+        versionStart,
+        versionEnd
       );
 
       // 如果详情表统计失败，回退到主表数据
@@ -338,7 +342,7 @@ ${accountLines}
     ]);
   }
 
-  async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink) {
+  async calculateAccountStatsFromDetail(projectName, accountName, platform, homeLink, versionStart, versionEnd) {
     try {
       const platformInfo = platformResolver.detectPlatform(homeLink);
       if (!platformInfo) {
@@ -359,6 +363,28 @@ ${accountLines}
       for (const r of records) {
         // 只统计数据状态正常的记录
         if (r.fields?.['数据状态'] === '已删除') continue;
+
+        // 按版本周期过滤
+        if (versionStart || versionEnd) {
+          const publishTimeField = r.fields?.['发布时间'];
+          if (!publishTimeField) continue;
+
+          let publishTime;
+          if (typeof publishTimeField === 'number') {
+            publishTime = new Date(publishTimeField);
+          } else {
+            publishTime = new Date(String(publishTimeField).replace(/-/g, '/'));
+          }
+          if (isNaN(publishTime.getTime())) continue;
+
+          const dateOnly = new Date(publishTime.getFullYear(), publishTime.getMonth(), publishTime.getDate());
+          const startOnly = versionStart ? new Date(versionStart.getFullYear(), versionStart.getMonth(), versionStart.getDate()) : null;
+          const endOnly = versionEnd ? new Date(versionEnd.getFullYear(), versionEnd.getMonth(), versionEnd.getDate()) : null;
+
+          if (startOnly && dateOnly < startOnly) continue;
+          if (endOnly && dateOnly > endOnly) continue;
+        }
+
         totalPublished++;
         totalPlayCount += parseInt(r.fields?.['播放量']) || 0;
       }

@@ -300,28 +300,33 @@ class SyncService {
           stats: { fetched: totalWorks },
         });
 
-        try {
-          const fmtDate = (d) => {
-            if (!d) return '';
-            const date = d instanceof Date ? d : new Date(String(d).replace(/-/g, '/'));
-            if (isNaN(date.getTime())) return String(d);
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${y}/${m}/${day}`;
-          };
-          await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource, startDate: fmtDate(startDate), endDate: fmtDate(endDate), versionProgress, accountStats });
-        } catch (notifyError) {
-          logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
+        // 只有非周报触发的增量同步才发送通知
+        if (triggerSource !== '周报生成') {
+          try {
+            const fmtDate = (d) => {
+              if (!d) return '';
+              const date = d instanceof Date ? d : new Date(String(d).replace(/-/g, '/'));
+              if (isNaN(date.getTime())) return String(d);
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              return `${y}/${m}/${day}`;
+            };
+            await notifyService.sendSyncResult(projectName, '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource, startDate: fmtDate(startDate), endDate: fmtDate(endDate), versionProgress, accountStats });
+          } catch (notifyError) {
+            logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
+          }
         }
         return { totalWorks, totalErrors };
       } catch (error) {
         logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
         await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime, operationType: '周期增量同步项目' });
-        try {
-          await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
-        } catch (notifyError) {
-          logger.warn('sendSyncResult failure notification failed', { projectName, error: notifyError.message, traceId });
+        if (triggerSource !== '周报生成') {
+          try {
+            await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
+          } catch (notifyError) {
+            logger.warn('sendSyncResult failure notification failed', { projectName, error: notifyError.message, traceId });
+          }
         }
         throw error;
       }
