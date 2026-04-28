@@ -400,9 +400,17 @@ class SyncService {
           const info = await tikhubApi.getXUserInfo(username);
           return parseInt(info?.data?.sub_count) || 0;
         }
+        case 'INS': {
+          const info = await tikhubApi.getInstagramUserInfo(username);
+          return parseInt(info?.data?.follower_count || info?.data?.user?.follower_count) || 0;
+        }
         case 'RD': {
           const info = await tikhubApi.getRedditUserInfo(username);
           return parseInt(info?.data?.redditorInfoByName?.karma?.total) || 0;
+        }
+        case 'FB': {
+          const info = await tikhubApi.getFacebookUserInfo(username);
+          return parseInt(info?.data?.followers_count || info?.data?.user?.followers_count) || 0;
         }
         default:
           return 0;
@@ -415,7 +423,7 @@ class SyncService {
 
   async fetchPlatformWorks(platformCode, username, options = {}) {
     const works = [];
-    const maxPages = options.maxPages || 100;
+    const maxPages = options.maxPages || 200;
     const startDate = options.startDate ? new Date(options.startDate) : null;
 
     const shouldBreakByDate = (items, getTimestamp) => {
