@@ -637,9 +637,9 @@ class SyncService {
     for (const work of works) {
       const fields = {
         '作品ID': String(work.workId),
-        '作品标题': work.title,
-        '作品链接': work.link,
-        '发布时间': work.publishTime,
+        '作品标题': work.title || '',
+        '作品链接': work.link || '',
+        '发布时间': work.publishTime || '',
         '播放量': Number(work.playCount) || 0,
         '点赞数': Number(work.diggCount) || 0,
         '评论数': Number(work.commentCount) || 0,
@@ -649,6 +649,12 @@ class SyncService {
         '同步时间': now,
         '总表记录ID': accountRecordId,
       };
+      // 过滤掉 undefined/null 值，避免飞书 API 字段转换错误
+      for (const key of Object.keys(fields)) {
+        if (fields[key] === undefined || fields[key] === null) {
+          delete fields[key];
+        }
+      }
       const recordId = existingMap.get(String(work.workId));
       if (recordId) {
         toUpdate.push({ recordId, fields });
@@ -700,6 +706,7 @@ class SyncService {
     works.forEach(work => {
       if (work.publishTime) {
         const date = new Date(work.publishTime);
+        if (isNaN(date.getTime())) return;
         const key = `${date.getMonth() + 1}月${date.getDate()}日`;
         dateMap.set(key, (dateMap.get(key) || 0) + 1);
       }
