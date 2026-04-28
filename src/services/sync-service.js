@@ -212,7 +212,7 @@ class SyncService {
             const publishedCount = filteredWorks.length;
 
             if (filteredWorks.length > 0 && detailTableId) {
-              const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id);
+              const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id, false);
               createdCount = syncResult.createdCount || 0;
               updatedCount = syncResult.updatedCount || 0;
               await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code);
@@ -755,7 +755,7 @@ class SyncService {
     }
   }
 
-  async syncWorksToDetailTable(detailTableId, works, accountRecordId) {
+  async syncWorksToDetailTable(detailTableId, works, accountRecordId, allowDelete = true) {
     if (!detailTableId || !works.length) return { createdCount: 0, updatedCount: 0 };
 
     const now = this._formatDateTime();
@@ -832,11 +832,13 @@ class SyncService {
       }
     }
 
-    // 删除不在新数据中的旧记录，以及重复记录（旧代码遗留）
+    // 删除重复记录（旧代码遗留），以及不在新数据中的旧记录（仅在全量同步时）
     const toDelete = [...duplicateRecordIds];
-    for (const [workId, recordId] of existingMap) {
-      if (!processedWorkIds.has(workId)) {
-        toDelete.push(recordId);
+    if (allowDelete) {
+      for (const [workId, recordId] of existingMap) {
+        if (!processedWorkIds.has(workId)) {
+          toDelete.push(recordId);
+        }
       }
     }
 
