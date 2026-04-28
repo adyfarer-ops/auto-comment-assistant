@@ -259,10 +259,12 @@ module.exports = {
         table_columns: headers.length,
         merge_info: [],
       },
-      children: allRows.map(row => ({
-        block_type: 15,
-        table_cell: { children: row.map(cell => ({ block_type: 2, text: { elements: [{ text_run: { content: cell } }] } })) },
-      })),
+      children: allRows.flatMap(row =>
+        row.map(cell => ({
+          block_type: 15,
+          table_cell: { children: [{ block_type: 2, text: { elements: [{ text_run: { content: cell } }] } }] },
+        }))
+      ),
     };
   },
 };
