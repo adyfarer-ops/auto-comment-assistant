@@ -1,6 +1,7 @@
 const axios = require('axios');
 const feishuAuth = require('./feishu-auth');
 const logger = require('../utils/logger');
+const aiService = require('./ai-service');
 
 class NotifyService {
   constructor() {
@@ -217,18 +218,25 @@ class NotifyService {
         lines.push(line);
       }
 
+      // 调用 AI 生成建议
       let suggestions = '\n建议：\n';
-      const lowPublish = accountStats.filter(s => s.targetPublished > 0 && (s.publishedCount / s.targetPublished) < 0.5);
-      const lowPlay = accountStats.filter(s => s.targetPlayCount > 0 && (s.totalPlayCount / s.targetPlayCount) < 0.1);
-
-      if (lowPublish.length > 0) {
-        suggestions += `- 以下账号发布进度不足50%，建议增加发布频率：${lowPublish.map(a => a.accountName).join('、')}\n`;
-      }
-      if (lowPlay.length > 0) {
-        suggestions += `- 以下账号播放量进度不足10%，建议优化内容或加强推广：${lowPlay.map(a => a.accountName).join('、')}\n`;
-      }
-      if (lowPublish.length === 0 && lowPlay.length === 0) {
-        suggestions += '- 各账号运营数据正常，请继续保持当前节奏。\n';
+      try {
+        const prompt = `请为以下游戏海外社媒运营项目生成简短的运营建议（3-5条，每条一行用「-」开头）：\n\n项目名称: ${projectName}\n版本进度: ${progressPercent}%\n\n各账号数据:\n${lines.join('\n')}\n\n请从数据表现、内容策略、发布节奏、风险预警等维度给出简洁建议。`;
+        const aiResult = await aiService.callAnyProvider(prompt);
+        suggestions += aiResult.trim();
+      } catch (aiError) {
+        logger.warn('AI suggestion generation failed, falling back to static suggestions', { projectName, error: aiError.message });
+        const lowPublish = accountStats.filter(s => s.targetPublished > 0 && (s.publishedCount / s.targetPublished) < 0.5);
+        const lowPlay = accountStats.filter(s => s.targetPlayCount > 0 && (s.totalPlayCount / s.targetPlayCount) < 0.1);
+        if (lowPublish.length > 0) {
+          suggestions += `- 以下账号发布进度不足50%，建议增加发布频率：${lowPublish.map(a => a.accountName).join('、')}\n`;
+        }
+        if (lowPlay.length > 0) {
+          suggestions += `- 以下账号播放量进度不足10%，建议优化内容或加强推广：${lowPlay.map(a => a.accountName).join('、')}\n`;
+        }
+        if (lowPublish.length === 0 && lowPlay.length === 0) {
+          suggestions += '- 各账号运营数据正常，请继续保持当前节奏。\n';
+        }
       }
 
       const content = header + '\n' + lines.join('\n') + '\n' + suggestions;
