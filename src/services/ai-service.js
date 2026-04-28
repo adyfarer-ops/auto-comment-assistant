@@ -166,58 +166,59 @@ class AIService {
     throw new Error(`All AI providers failed. Last error: ${lastError?.message}`);
   }
 
+  _shouldRetry(status) {
+    return status === 401 || status === 429 || status >= 500;
+  }
+
+  async _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async callMoonshotWithMessages(messages) {
-    try {
-      const response = await axios.post(`${config.ai.moonshot.baseUrl}/chat/completions`, {
-        model: 'moonshot-v1-8k',
-        messages,
-        temperature: 0.7,
-      }, {
-        headers: { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 60000,
-        httpsAgent: this.agent,
-      });
-      return response.data.choices[0].message.content;
-    } catch (error) {
-      logger.error('Moonshot API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
-      throw error;
-    }
+    const url = `${config.ai.moonshot.baseUrl}/chat/completions`;
+    const data = { model: 'moonshot-v1-8k', messages, temperature: 0.7 };
+    const headers = { Authorization: `Bearer ${config.ai.moonshot.apiKey}`, 'Content-Type': 'application/json' };
+    return this._callWithRetry('moonshot', url, data, headers);
   }
 
   async callDoubaoWithMessages(messages) {
-    try {
-      const response = await axios.post(`${config.ai.doubao.baseUrl}/chat/completions`, {
-        model: config.ai.doubao.model,
-        messages,
-        temperature: 0.7,
-      }, {
-        headers: { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 60000,
-        httpsAgent: this.agent,
-      });
-      return response.data.choices[0].message.content;
-    } catch (error) {
-      logger.error('Doubao API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
-      throw error;
-    }
+    const url = `${config.ai.doubao.baseUrl}/chat/completions`;
+    const data = { model: config.ai.doubao.model, messages, temperature: 0.7 };
+    const headers = { Authorization: `Bearer ${config.ai.doubao.apiKey}`, 'Content-Type': 'application/json' };
+    return this._callWithRetry('doubao', url, data, headers);
   }
 
   async callDeepSeekWithMessages(messages) {
-    try {
-      const response = await axios.post(`${config.ai.deepseek.baseUrl}/chat/completions`, {
-        model: config.ai.deepseek.model,
-        messages,
-        temperature: 0.7,
-      }, {
-        headers: { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' },
-        timeout: 60000,
-        httpsAgent: this.agent,
-      });
-      return response.data.choices[0].message.content;
-    } catch (error) {
-      logger.error('DeepSeek API failed', { error: error.message, status: error.response?.status, data: error.response?.data });
-      throw error;
+    const url = `${config.ai.deepseek.baseUrl}/chat/completions`;
+    const data = { model: config.ai.deepseek.model, messages, temperature: 0.7 };
+    const headers = { Authorization: `Bearer ${config.ai.deepseek.apiKey}`, 'Content-Type': 'application/json' };
+    return this._callWithRetry('deepseek', url, data, headers);
+  }
+
+  async _callWithRetry(name, url, data, headers) {
+    const maxRetries = 2;
+    let lastError;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await axios.post(url, data, {
+          headers,
+          timeout: 60000,
+          httpsAgent: this.agent,
+        });
+        return response.data.choices[0].message.content;
+      } catch (error) {
+        lastError = error;
+        const status = error.response?.status;
+        if (attempt < maxRetries && this._shouldRetry(status)) {
+          logger.warn(`${name} API failed, retrying`, { status, attempt: attempt + 1, error: error.message });
+          await this._sleep(1000 * (attempt + 1));
+          continue;
+        }
+        logger.error(`${name} API failed`, { error: error.message, status, data: error.response?.data });
+        throw error;
+      }
     }
+    throw lastError;
   }
 }
 
