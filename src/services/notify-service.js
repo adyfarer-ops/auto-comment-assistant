@@ -259,7 +259,8 @@ class NotifyService {
         }
       }
 
-      const mdContent = header + '\n```\n' + lines.join('\n') + '\n```\n' + suggestions;
+      // 使用普通文本而非代码块，避免移动端无法点击展开的问题
+      const mdContent = header + '\n' + lines.join('\n') + '\n' + suggestions;
       const card = {
         schema: '2.0',
         config: { wide_screen_mode: true },
