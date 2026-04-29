@@ -212,8 +212,8 @@ class SyncService {
             let skippedCount = 0;
 
             const followersCount = await this.fetchPlatformFollowers(platform.code, username);
-            const totalPlayCount = filteredWorks.reduce((sum, w) => sum + (w.playCount || 0), 0);
-            const publishedCount = filteredWorks.length;
+            let totalPlayCount = filteredWorks.reduce((sum, w) => sum + (w.playCount || 0), 0);
+            let publishedCount = filteredWorks.length;
 
             if (detailTableId) {
               if (filteredWorks.length > 0) {
@@ -222,7 +222,11 @@ class SyncService {
                 updatedCount = syncResult.updatedCount || 0;
                 totalWorks += filteredWorks.length;
               }
-              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId, startDate, endDate);
+              const statsResult = await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId, startDate, endDate);
+              if (statsResult) {
+                publishedCount = statsResult.publishedCount;
+                totalPlayCount = statsResult.totalPlayCount;
+              }
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
@@ -999,10 +1003,12 @@ class SyncService {
       }
       await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, fieldsToUpdate);
       logger.info('Account stats updated', { accountName: account.fields?.['账号名称'], planTableId, publishedCount, dateFieldsCount: Object.keys(filteredDateStats).length });
+      return { publishedCount, totalPlayCount };
     } catch (error) {
       const msg = error.message || '';
       const errCode = msg.match(/code[:：]\s*(\d+)/)?.[1] || String(error.code);
       logger.error('updateAccountStats failed, skipping stats update for this account', { accountName: account.fields?.['账号名称'], planTableId, error: msg, code: errCode });
+      return null;
     }
   }
 
