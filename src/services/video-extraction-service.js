@@ -4,49 +4,66 @@ const logger = require('../utils/logger');
 
 class VideoExtractionService {
   constructor() {
-    this.apiKey = config.henghhengmao?.apiKey;
-    this.baseUrl = config.henghhengmao?.baseUrl || 'https://api.henghhengmao.com';
+    this.apiKey = config.meowload?.apiKey || config.henghhengmao?.apiKey;
+    this.baseUrl = config.meowload?.baseUrl || 'https://api.meowload.net';
   }
 
   async extractVideoUrl(shareUrl) {
     if (!this.apiKey) {
-      throw new Error('HENGHENGMAO_API_KEY not configured');
+      throw new Error('MEOWLOAD_API_KEY not configured');
     }
 
     try {
       const response = await axios.post(
-        `${this.baseUrl}/api/v1/video/parse`,
+        `${this.baseUrl}/openapi/extract/post`,
         { url: shareUrl },
         {
           headers: {
-            Authorization: `Bearer ${this.apiKey}`,
+            'x-api-key': this.apiKey,
             'Content-Type': 'application/json',
+            'accept-language': 'zh',
           },
           timeout: 30000,
         }
       );
 
-      if (response.data.code !== 0) {
-        throw new Error(`HENGHENGMAO API error: ${response.data.msg}`);
+      const data = response.data;
+      if (!data.medias || data.medias.length === 0) {
+        throw new Error('MEOWLOAD API returned no media');
       }
 
-      const data = response.data.data;
+      const videoMedia = data.medias.find(m => m.media_type === 'video');
+      if (!videoMedia) {
+        throw new Error('MEOWLOAD API returned no video media');
+      }
+
       logger.info('Video extraction success', { shareUrl: shareUrl.slice(0, 80) });
 
       return {
-        videoUrl: data.video_url,
-        coverUrl: data.cover_url,
-        title: data.title,
-        description: data.description,
-        author: data.author,
-        platform: data.platform,
-        duration: data.duration,
+        videoUrl: videoMedia.resource_url,
+        coverUrl: videoMedia.preview_url,
+        title: data.text || '',
+        description: data.text || '',
+        author: '',
+        platform: this._detectPlatform(shareUrl),
+        duration: videoMedia.duration || 0,
         raw: data,
       };
     } catch (error) {
       logger.error('Video extraction failed', { shareUrl: shareUrl.slice(0, 80), error: error.message });
       throw error;
     }
+  }
+
+  _detectPlatform(shareUrl) {
+    const url = (shareUrl || '').toLowerCase();
+    if (url.includes('tiktok')) return 'TikTok';
+    if (url.includes('youtube') || url.includes('youtu.be')) return 'YouTube';
+    if (url.includes('instagram')) return 'Instagram';
+    if (url.includes('x.com') || url.includes('twitter')) return 'X';
+    if (url.includes('reddit')) return 'Reddit';
+    if (url.includes('facebook')) return 'Facebook';
+    return 'Unknown';
   }
 
   async batchExtract(urls) {

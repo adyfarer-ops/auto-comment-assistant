@@ -49,9 +49,15 @@ module.exports = {
     managementTableToken: process.env.PROJECT_MANAGEMENT_TABLE_TOKEN,
   },
 
+  meowload: {
+    apiKey: process.env.MEOWLOAD_API_KEY || process.env.HENGHENGMAO_API_KEY,
+    baseUrl: process.env.MEOWLOAD_BASE_URL || 'https://api.meowload.net',
+  },
+
+  // 兼容旧配置名
   henghhengmao: {
-    apiKey: process.env.HENGHENGMAO_API_KEY,
-    baseUrl: process.env.HENGHENGMAO_BASE_URL || 'https://api.henghhengmao.com',
+    apiKey: process.env.MEOWLOAD_API_KEY || process.env.HENGHENGMAO_API_KEY,
+    baseUrl: process.env.MEOWLOAD_BASE_URL || 'https://api.meowload.net',
   },
 
   notify: {

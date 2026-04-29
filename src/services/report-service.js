@@ -176,11 +176,12 @@ class ReportService {
           continue;
         }
 
-        const analysis = await videoAnalysisService.analyzeVideoDirect(extracted.videoUrl, {
+        const result = await videoAnalysisService.analyzeVideo(extracted.videoUrl, {
           prompt: '请分析这个短视频的画面风格、主要元素、节奏感、氛围，并给出内容运营建议。',
+          maxFrames: 3,
         });
 
-        topWork.videoAnalysis = analysis;
+        topWork.videoAnalysis = result.analysis;
         logger.info('Video analysis completed for top work', { title: topWork.title?.slice(0, 40), playCount: topWork.playCount });
       } catch (error) {
         logger.warn('Video analysis failed for top work', { title: topWork.title?.slice(0, 40), error: error.message });
