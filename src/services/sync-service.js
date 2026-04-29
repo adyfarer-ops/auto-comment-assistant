@@ -222,8 +222,7 @@ class SyncService {
                 updatedCount = syncResult.updatedCount || 0;
                 totalWorks += filteredWorks.length;
               }
-              // 主表统计始终基于全量作品更新，避免周期过滤导致数据被"删除"
-              await this.updateAccountStats(account, planTableId, works, followersCount, platform.code);
+              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code);
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
