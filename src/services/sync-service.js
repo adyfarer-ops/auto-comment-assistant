@@ -52,6 +52,12 @@ class SyncService {
 
     return syncQueue.enqueue(`project:${projectName}`, async () => {
       try {
+        await projectService.updateProjectStatus(projectRecord.record_id, '执行中');
+      } catch (e) {
+        logger.warn('Failed to update project status to executing', { projectName, error: e.message });
+      }
+
+      try {
         const accounts = await feishuBitable.searchRecords(this.projectMgmtAppToken, planTableId);
         let totalWorks = 0;
         let totalErrors = 0;
@@ -156,6 +162,12 @@ class SyncService {
     const projectLogId = await logService.logSyncStart(projectName, { masterTableId: planTableId, traceId, triggerSource, operationType: '周期增量同步项目' });
 
     return syncQueue.enqueue(`project:${projectName}:incremental`, async () => {
+      try {
+        await projectService.updateProjectStatus(projectRecord.record_id, '执行中');
+      } catch (e) {
+        logger.warn('Failed to update project status to executing', { projectName, error: e.message });
+      }
+
       const parsedStart = this._parseDate(startDate);
       const parsedEnd = this._parseDate(endDate);
 

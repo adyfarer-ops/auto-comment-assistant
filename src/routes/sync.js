@@ -38,7 +38,7 @@ router.post('/project', async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    await projectService.updateProjectStatus(project.record_id, '执行中');
+    await projectService.updateProjectStatus(project.record_id, '排队中');
 
     syncService.syncProject(project, { triggerSource: 'API调用' })
       .then(async () => {
@@ -76,7 +76,7 @@ router.post('/project-incremental', async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    await projectService.updateProjectStatus(project.record_id, '执行中');
+    await projectService.updateProjectStatus(project.record_id, '排队中');
 
     syncService.syncProjectIncremental(project, startDate, endDate, { triggerSource: 'API调用' })
       .then(async () => {

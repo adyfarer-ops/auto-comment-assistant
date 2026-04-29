@@ -28,7 +28,7 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
 
     switch (action) {
       case 'sync': {
-        await projectService.updateProjectStatus(project.record_id, '执行中');
+        await projectService.updateProjectStatus(project.record_id, '排队中');
 
         syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
           .then(async () => {
@@ -150,7 +150,7 @@ router.post('/sync/:recordId', verifyWebhookToken, async (req, res, next) => {
       return res.status(404).json({ code: 404, message: 'Project not found' });
     }
 
-    await projectService.updateProjectStatus(project.record_id, '执行中');
+    await projectService.updateProjectStatus(project.record_id, '排队中');
 
     syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
       .then(async () => {
