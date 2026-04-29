@@ -222,7 +222,7 @@ class SyncService {
                 updatedCount = syncResult.updatedCount || 0;
                 totalWorks += filteredWorks.length;
               }
-              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId);
+              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId, startDate, endDate);
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
@@ -388,7 +388,7 @@ class SyncService {
 
       if (detailTableId) {
         await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
-        await this.updateAccountStats(account, planTableId, works, followersCount, platform.code, detailTableId);
+        await this.updateAccountStats(account, planTableId, works, followersCount, platform.code, detailTableId, null, null);
       }
 
       logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
@@ -907,8 +907,11 @@ class SyncService {
     return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
   }
 
-  async updateAccountStats(account, planTableId, works, followersCount = 0, platformCode = '', detailTableId = null) {
-    // 如果传入了详情表 ID，优先以详情表实际记录数为准，确保主表和详情表一致
+  async updateAccountStats(account, planTableId, works, followersCount = 0, platformCode = '', detailTableId = null, startDate = null, endDate = null) {
+    const parsedStart = this._parseDate(startDate);
+    const parsedEnd = this._parseDate(endDate);
+
+    // 如果传入了详情表 ID，优先查询详情表，并按版本周期过滤后统计，确保主表统计的是周期内数据
     let publishedCount = works ? works.length : 0;
     let totalPlayCount = works ? works.reduce((sum, w) => sum + (w.playCount || 0), 0) : 0;
     let dateStats = works ? this.calculateDateStats(works) : {};
@@ -916,13 +919,27 @@ class SyncService {
     if (detailTableId) {
       try {
         const detailRecords = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
-        publishedCount = detailRecords.length;
-        totalPlayCount = detailRecords.reduce((sum, r) => {
+        const filteredRecords = detailRecords.filter(r => {
+          const publishTime = r.fields?.['发布时间'];
+          if (!publishTime) return false;
+          let pt = publishTime;
+          if (typeof pt === 'number' && pt > 1000000000000) {
+            // 毫秒时间戳
+            pt = new Date(pt);
+          } else {
+            pt = new Date(String(pt).replace(/-/g, '/'));
+          }
+          if (isNaN(pt.getTime())) return false;
+          if (parsedStart && pt < parsedStart) return false;
+          if (parsedEnd && pt > parsedEnd) return false;
+          return true;
+        });
+        publishedCount = filteredRecords.length;
+        totalPlayCount = filteredRecords.reduce((sum, r) => {
           const playCount = parseInt(r.fields?.['播放量']) || 0;
           return sum + playCount;
         }, 0);
-        // 用详情表中所有记录的发布日期重新计算日期分布
-        dateStats = this.calculateDateStats(detailRecords.map(r => ({
+        dateStats = this.calculateDateStats(filteredRecords.map(r => ({
           publishTime: r.fields?.['发布时间'],
         })));
       } catch (e) {
