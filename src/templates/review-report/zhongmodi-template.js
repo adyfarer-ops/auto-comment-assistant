@@ -154,15 +154,6 @@ module.exports = {
         ));
       }
 
-      // 手动录入字段（方案A）
-      const sampleAcc = dir.accounts[0];
-      if (sampleAcc) {
-        const f = sampleAcc.fields;
-        if (f['涨粉走势']) blocks.push(this.text(`涨粉走势：${f['涨粉走势']}`));
-        if (f['用户画像']) blocks.push(this.text(`用户画像：${f['用户画像']}`));
-        if (f['播放来源']) blocks.push(this.text(`播放来源：${f['播放来源']}`));
-      }
-
       blocks.push(this.text(`本版本亮点：${aiContent['亮点'] || aiContent['本版本亮点'] || '_待AI填充_'}`));
       blocks.push(this.text(`本版本缺点：${aiContent['缺点'] || aiContent['本版本缺点'] || '_待AI填充_'}`));
 
@@ -176,7 +167,19 @@ module.exports = {
         blocks.push(this.text(`链接：${cleanLink}`));
         blocks.push(this.text(`内容简述：${work.title || ''}`));
         blocks.push(this.text(`播放量：${(work.playCount / 10000).toFixed(0)}w`));
-        blocks.push(this.text(`成功要素：${aiContent['成功要素'] || '_待AI填充_'}`));
+
+        // 成功要素：支持多行详细分析
+        const successFactors = aiContent['成功要素'] || '_待AI填充_';
+        blocks.push(this.text('成功要素：'));
+        const lines = successFactors.split('\n').filter(l => l.trim());
+        if (lines.length > 1) {
+          for (const line of lines) {
+            blocks.push(this.text(line.trim()));
+          }
+        } else {
+          blocks.push(this.text(successFactors));
+        }
+
         if (work.videoAnalysis) {
           blocks.push(this.text(`视频画面分析：${work.videoAnalysis}`));
         }
@@ -226,10 +229,10 @@ module.exports = {
 
     prompt += `\n分析要求（终末地风格）：\n`;
     prompt += `1. 每个内容方向需总结"亮点"和"缺点"\n`;
-    prompt += `2. 爆款成功要素要分析到内容元素层面（画风、IP结合、音乐趋势、剧情冲突点、用户留存机制）\n`;
+    prompt += `2. 爆款成功要素必须多行详细分析到内容元素层面（画风、IP结合、音乐趋势、剧情冲突点、用户留存机制），每条成功要素单独一行\n`;
     prompt += `3. AIGC方向需额外关注技术局限（生成指令、剪辑复杂度、多人同屏表现）\n`;
     prompt += `4. 低播放原因常指向平台差异或素材局限\n`;
-    prompt += `5. 优化方向要具体可执行（如"尝试吊带袜天使画风"、"形成爆款系列"）\n`;
+    prompt += `5. 优化方向要具体可执行（如"尝试吊带袜天使画风"、"形成爆款系列"），每条方向单独一行\n`;
     prompt += `6. 解说剪辑类账号需给出版本内容规划建议\n`;
     prompt += `\n请按以下格式输出：\n`;
     prompt += `[亮点]\n...\n\n`;

@@ -63,15 +63,15 @@ class ReportService {
     // 生成 AI 运营建议（模板特定 prompt）
     let aiContent = {};
     try {
-      const aiPrompt = template.buildAIPrompt(fields['项目名称'], accounts, worksMap) +
-        '\n\n请按以下格式输出：\n' +
-        '[亮点]\n...\n\n' +
-        '[缺点]\n...\n\n' +
-        '[成功要素]\n...\n\n' +
-        '[核心问题]\n...\n\n' +
-        '[优化方向]\n...\n';
+      const aiPrompt = template.buildAIPrompt(fields['项目名称'], accounts, worksMap);
       const aiSuggestions = await aiService.callAnyProvider(aiPrompt, undefined, { timeout: 120000 });
-      aiContent = this.parseAISuggestions(aiSuggestions);
+
+      // 优先使用模板的自定义解析方法
+      if (template.parseAIResponse) {
+        aiContent = template.parseAIResponse(aiSuggestions);
+      } else {
+        aiContent = this.parseAISuggestions(aiSuggestions);
+      }
     } catch (error) {
       logger.error('AI suggestions generation failed', { error: error.message });
       aiContent = {
@@ -201,38 +201,44 @@ class ReportService {
     const dateStr = new Date().toISOString().split('T')[0];
     const tableName = `${projectName} 复盘数据 (${dateStr})`;
 
-    // Collect all unique field names from accounts
-    const allFieldNames = new Set();
-    for (const account of accounts) {
-      for (const key of Object.keys(account.fields)) {
-        allFieldNames.add(key);
-      }
+    // 白名单字段：只保留复盘报告需要的关键字段
+    const whiteList = [
+      { name: '账号名称', type: 1 },
+      { name: '平台', type: 1 },
+      { name: '主页链接', type: 1 },
+      { name: '目前播放量', type: 2 },
+      { name: '已发布', type: 2 },
+      { name: '粉丝总量', type: 2 },
+      { name: '涨粉走势', type: 1 },
+      { name: '用户画像', type: 1 },
+      { name: '播放来源', type: 1 },
+    ];
+
+    // 动态查找周期初/末粉丝量字段
+    const sampleFields = accounts[0]?.fields || {};
+    const fanKeys = Object.keys(sampleFields).filter(k => k.includes('粉丝量') && k !== '粉丝总量');
+    if (fanKeys.length >= 2) {
+      fanKeys.sort();
+      whiteList.push({ name: fanKeys[0], type: 2 }); // 周期初
+      whiteList.push({ name: fanKeys[1], type: 2 }); // 周期末
     }
 
-    // Known numeric fields for type detection
-    const numericFields = new Set([
-      '目前播放量', '已发布', '粉丝总量', '发布完成率',
-      '目标发布量', '目标播放量', '周发布目标', '粉丝增长',
-    ]);
+    // 计算字段
+    const computedFields = [
+      { name: '互动量', type: 2 },
+      { name: '互动率(%)', type: 2 },
+      { name: '稿均播放', type: 2 },
+    ];
 
-    // Build field definitions
-    const fields = [];
-    for (const name of allFieldNames) {
-      if (numericFields.has(name)) {
-        fields.push({ field_name: name, type: 2 });
-      } else {
-        fields.push({ field_name: name, type: 1 });
-      }
-    }
-
-    // Add computed fields
-    fields.push({ field_name: '互动量', type: 2 });
-    fields.push({ field_name: '互动率(%)', type: 2 });
-    fields.push({ field_name: '稿均播放', type: 2 });
+    const allFields = [...whiteList, ...computedFields];
 
     // Create table
-    logger.info('Creating data overview bitable', { projectName, tableName, fieldCount: fields.length });
-    const tableResult = await feishuBitable.createTable(this.projectMgmtAppToken, tableName, fields);
+    logger.info('Creating data overview bitable', { projectName, tableName, fieldCount: allFields.length });
+    const tableResult = await feishuBitable.createTable(
+      this.projectMgmtAppToken,
+      tableName,
+      allFields.map(f => ({ field_name: f.name, type: f.type }))
+    );
     const tableId = tableResult.table_id;
 
     // Build records
@@ -249,19 +255,19 @@ class ReportService {
       const avgPlay = published > 0 ? Math.round(playCount / published) : 0;
 
       const record = {};
-      for (const key of allFieldNames) {
-        let value = af[key];
+      for (const f of whiteList) {
+        let value = af[f.name];
         if (value === undefined || value === null) {
-          value = numericFields.has(key) ? 0 : '';
+          value = f.type === 2 ? 0 : '';
         } else if (typeof value === 'object') {
           value = value.link || value.url || value.text || JSON.stringify(value);
-        } else if (numericFields.has(key)) {
+        } else if (f.type === 2) {
           const num = parseFloat(value);
           value = isNaN(num) ? 0 : num;
         } else {
           value = String(value);
         }
-        record[key] = value;
+        record[f.name] = value;
       }
 
       record['互动量'] = interactCount;
