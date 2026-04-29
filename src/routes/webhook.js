@@ -32,11 +32,19 @@ router.post('/button', verifyWebhookToken, async (req, res, next) => {
 
         syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
           .then(async () => {
-            await projectService.updateProjectStatus(project.record_id, '成功');
+            try {
+              await projectService.updateProjectStatus(project.record_id, '成功');
+            } catch (statusErr) {
+              logger.error('Failed to update project status to success from webhook sync', { error: statusErr.message });
+            }
           })
           .catch(async (err) => {
             logger.error('Webhook sync failed', { error: err.message });
-            await projectService.updateProjectStatus(project.record_id, '失败');
+            try {
+              await projectService.updateProjectStatus(project.record_id, '失败');
+            } catch (statusErr) {
+              logger.error('Failed to update project status to failure from webhook sync', { error: statusErr.message });
+            }
           });
 
         return res.json({ code: 0, message: 'Sync triggered via webhook' });
@@ -146,11 +154,19 @@ router.post('/sync/:recordId', verifyWebhookToken, async (req, res, next) => {
 
     syncService.syncProject(project, { triggerSource: 'Webhook按钮' })
       .then(async () => {
-        await projectService.updateProjectStatus(project.record_id, '成功');
+        try {
+          await projectService.updateProjectStatus(project.record_id, '成功');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to success from legacy webhook sync', { error: statusErr.message });
+        }
       })
       .catch(async (err) => {
         logger.error('Webhook sync failed', { error: err.message });
-        await projectService.updateProjectStatus(project.record_id, '失败');
+        try {
+          await projectService.updateProjectStatus(project.record_id, '失败');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to failure from legacy webhook sync', { error: statusErr.message });
+        }
       });
 
     res.json({ code: 0, message: 'Sync triggered via webhook' });

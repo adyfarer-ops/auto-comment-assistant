@@ -222,7 +222,7 @@ class SyncService {
                 updatedCount = syncResult.updatedCount || 0;
                 totalWorks += filteredWorks.length;
               }
-              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code);
+              await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId);
             } else {
               skippedCount = works.length - filteredWorks.length;
             }
@@ -388,7 +388,7 @@ class SyncService {
 
       if (detailTableId) {
         await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
-        await this.updateAccountStats(account, planTableId, works, followersCount, platform.code);
+        await this.updateAccountStats(account, planTableId, works, followersCount, platform.code, detailTableId);
       }
 
       logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
@@ -907,22 +907,35 @@ class SyncService {
     return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
   }
 
-  async updateAccountStats(account, planTableId, works, followersCount = 0, platformCode = '') {
-    if (!works || works.length === 0) {
-      logger.warn('Skipping account stats update due to empty works', { accountName: account.fields?.['账号名称'] });
-      return;
+  async updateAccountStats(account, planTableId, works, followersCount = 0, platformCode = '', detailTableId = null) {
+    // 如果传入了详情表 ID，优先以详情表实际记录数为准，确保主表和详情表一致
+    let publishedCount = works ? works.length : 0;
+    let totalPlayCount = works ? works.reduce((sum, w) => sum + (w.playCount || 0), 0) : 0;
+    let dateStats = works ? this.calculateDateStats(works) : {};
+
+    if (detailTableId) {
+      try {
+        const detailRecords = await feishuBitable.searchRecords(this.projectMgmtAppToken, detailTableId);
+        publishedCount = detailRecords.length;
+        totalPlayCount = detailRecords.reduce((sum, r) => {
+          const playCount = parseInt(r.fields?.['播放量']) || 0;
+          return sum + playCount;
+        }, 0);
+        // 用详情表中所有记录的发布日期重新计算日期分布
+        dateStats = this.calculateDateStats(detailRecords.map(r => ({
+          publishTime: r.fields?.['发布时间'],
+        })));
+      } catch (e) {
+        logger.warn('Failed to query detail table for stats, falling back to works', { detailTableId, error: e.message });
+      }
     }
-
-    const totalPlayCount = works.reduce((sum, w) => sum + (w.playCount || 0), 0);
-    const publishedCount = works.length;
-
-    const dateStats = this.calculateDateStats(works);
 
     const baseFields = {
       '目前播放量': totalPlayCount,
       '已发布': publishedCount,
       '粉丝总量': followersCount,
       '平台': platformCode,
+      '同步时间': this._formatDateTime(),
     };
 
     const baseFieldDefs = {
@@ -930,6 +943,7 @@ class SyncService {
       '已发布': { field_name: '已发布', type: 2, property: { formatter: '0' } },
       '粉丝总量': { field_name: '粉丝总量', type: 2, property: { formatter: '0' } },
       '平台': { field_name: '平台', type: 1 },
+      '同步时间': { field_name: '同步时间', type: 5, property: { date_formatter: 'yyyy/MM/dd HH:mm' } },
     };
 
     try {
@@ -967,7 +981,7 @@ class SyncService {
         }
       }
       await feishuBitable.updateRecord(this.projectMgmtAppToken, planTableId, account.record_id, fieldsToUpdate);
-      logger.info('Account stats updated', { accountName: account.fields?.['账号名称'], planTableId, dateFieldsCount: Object.keys(filteredDateStats).length });
+      logger.info('Account stats updated', { accountName: account.fields?.['账号名称'], planTableId, publishedCount, dateFieldsCount: Object.keys(filteredDateStats).length });
     } catch (error) {
       const msg = error.message || '';
       const errCode = msg.match(/code[:：]\s*(\d+)/)?.[1] || String(error.code);

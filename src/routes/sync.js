@@ -42,11 +42,19 @@ router.post('/project', async (req, res, next) => {
 
     syncService.syncProject(project, { triggerSource: 'API调用' })
       .then(async () => {
-        await projectService.updateProjectStatus(project.record_id, '成功');
+        try {
+          await projectService.updateProjectStatus(project.record_id, '成功');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to success', { error: statusErr.message });
+        }
       })
       .catch(async (err) => {
         logger.error('Sync project failed', { error: err.message });
-        await projectService.updateProjectStatus(project.record_id, '失败');
+        try {
+          await projectService.updateProjectStatus(project.record_id, '失败');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to failure', { error: statusErr.message });
+        }
       });
 
     res.json({ code: 0, message: 'Project sync started', tableId });
@@ -71,12 +79,20 @@ router.post('/project-incremental', async (req, res, next) => {
     await projectService.updateProjectStatus(project.record_id, '执行中');
 
     syncService.syncProjectIncremental(project, startDate, endDate, { triggerSource: 'API调用' })
-      .then(async (result) => {
-        await projectService.updateProjectStatus(project.record_id, '成功');
+      .then(async () => {
+        try {
+          await projectService.updateProjectStatus(project.record_id, '成功');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to success after incremental sync', { error: statusErr.message });
+        }
       })
       .catch(async (err) => {
         logger.error('Incremental sync failed', { error: err.message });
-        await projectService.updateProjectStatus(project.record_id, '失败');
+        try {
+          await projectService.updateProjectStatus(project.record_id, '失败');
+        } catch (statusErr) {
+          logger.error('Failed to update project status to failure after incremental sync', { error: statusErr.message });
+        }
       });
 
     res.json({ code: 0, message: 'Incremental sync started', tableId, startDate, endDate });
