@@ -800,7 +800,7 @@ class SyncService {
   }
 
   async syncWorksToDetailTable(detailTableId, works, accountRecordId, allowDelete = true) {
-    if (!detailTableId || !works.length) return { createdCount: 0, updatedCount: 0 };
+    if (!detailTableId) return { createdCount: 0, updatedCount: 0 };
 
     const now = this._formatDateTime();
 
@@ -833,8 +833,10 @@ class SyncService {
     }
 
     // 对 works 去重，防止 API 返回重复数据导致重复插入
-    const uniqueWorks = [...new Map(works.map(w => [String(w.workId), w])).values()];
-    logger.info('Detail table dedup check', { detailTableId, allRecordsCount: allRecords.length, existingMapSize: existingMap.size, worksCount: works.length, uniqueWorksCount: uniqueWorks.length, publishTimeIsDate, linkIsUrl });
+    const uniqueWorks = works && works.length > 0
+      ? [...new Map(works.map(w => [String(w.workId), w])).values()]
+      : [];
+    logger.info('Detail table dedup check', { detailTableId, allRecordsCount: allRecords.length, existingMapSize: existingMap.size, worksCount: works ? works.length : 0, uniqueWorksCount: uniqueWorks.length, publishTimeIsDate, linkIsUrl });
 
     const toCreate = [];
     const toUpdate = [];
@@ -906,6 +908,22 @@ class SyncService {
         await this._sleep(100);
       }
       logger.info('Detail table delete completed', { detailTableId, deleted: toDelete.length });
+    }
+
+    // 刷新所有未被删除的已有记录的同步时间，确保即使数据无变化，同步时间也会更新
+    const deletedSet = new Set(toDelete);
+    const syncTimeUpdates = [];
+    for (const [workId, recordId] of existingMap) {
+      if (!deletedSet.has(recordId)) {
+        syncTimeUpdates.push({ recordId, fields: { '同步时间': now } });
+      }
+    }
+    if (syncTimeUpdates.length > 0) {
+      if (toUpdate.length > 0 || toCreate.length > 0) {
+        await this._sleep(config.sync?.batchInterval || 500);
+      }
+      const syncTimeResult = await feishuBitable.batchUpdateRecords(this.projectMgmtAppToken, detailTableId, syncTimeUpdates);
+      logger.info('Detail table sync time refresh completed', { detailTableId, refreshed: syncTimeUpdates.length, result: syncTimeResult ? 'success' : 'empty' });
     }
 
     return { createdCount: toCreate.length, updatedCount: toUpdate.length, deletedCount: toDelete.length };
