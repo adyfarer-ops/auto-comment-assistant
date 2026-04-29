@@ -423,8 +423,9 @@ class ReportService {
             for (let cellIdx = 0; cellIdx < Math.min(cellBlocks.length, cellContents.length); cellIdx++) {
               const cellBlock = cellBlocks[cellIdx];
               const contentBlocks = cellContents[cellIdx];
-              if (cellBlock?.block_id && Array.isArray(contentBlocks) && contentBlocks.length > 0) {
-                await this._writeBlocksRecursive(documentId, cellBlock.block_id, contentBlocks, token);
+              const cellBlockId = typeof cellBlock === 'string' ? cellBlock : cellBlock?.block_id;
+              if (cellBlockId && Array.isArray(contentBlocks) && contentBlocks.length > 0) {
+                await this._writeBlocksRecursive(documentId, cellBlockId, contentBlocks, token);
               }
             }
           }
