@@ -89,6 +89,12 @@ class SyncService {
         });
 
         try {
+          await projectService.updateProjectStatus(projectRecord.record_id, '成功');
+        } catch (statusErr) {
+          logger.warn('Failed to update project status to success in syncProject', { projectName, error: statusErr.message });
+        }
+
+        try {
           await notifyService.sendSyncResult(projectName, totalErrors > 0 ? '部分失败' : '成功', { traceId, accountsCount: accounts.length, totalWorks, totalErrors, triggerSource });
         } catch (notifyError) {
           logger.warn('sendSyncResult success notification failed', { projectName, error: notifyError.message, traceId });
@@ -97,6 +103,11 @@ class SyncService {
       } catch (error) {
         logger.error('Project sync failed', { projectName, error: error.message, traceId });
         await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime });
+        try {
+          await projectService.updateProjectStatus(projectRecord.record_id, '失败');
+        } catch (statusErr) {
+          logger.warn('Failed to update project status to failure in syncProject', { projectName, error: statusErr.message });
+        }
         try {
           await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
         } catch (notifyError) {
@@ -323,6 +334,12 @@ class SyncService {
           stats: { fetched: totalWorks },
         });
 
+        try {
+          await projectService.updateProjectStatus(projectRecord.record_id, '成功');
+        } catch (statusErr) {
+          logger.warn('Failed to update project status to success in syncProjectIncremental', { projectName, error: statusErr.message });
+        }
+
         // 只有非周报触发的增量同步才发送通知
         if (triggerSource !== '周报生成') {
           try {
@@ -345,6 +362,11 @@ class SyncService {
       } catch (error) {
         logger.error('Incremental sync failed', { projectName, error: error.message, traceId });
         await logService.logSyncError(projectName, error, { masterTableId: planTableId, traceId, triggerSource, logRecordId: projectLogId, startTime: projectStartTime, operationType: '周期增量同步项目' });
+        try {
+          await projectService.updateProjectStatus(projectRecord.record_id, '失败');
+        } catch (statusErr) {
+          logger.warn('Failed to update project status to failure in syncProjectIncremental', { projectName, error: statusErr.message });
+        }
         if (triggerSource !== '周报生成') {
           try {
             await notifyService.sendSyncResult(projectName, '失败', { traceId, errorMessage: error.message, triggerSource });
@@ -545,10 +567,7 @@ class SyncService {
                 });
               }
             }
-            if (shouldBreakByDate(items, v => v.create_time ? new Date(v.create_time * 1000).getTime() : null)) {
-              logger.info('TikTok pagination stopped by date boundary', { username, page });
-              break;
-            }
+            // TikTok API 返回顺序不严格按时间倒序，不能使用日期边界提前终止
             const hasMore = videos.data?.has_more ?? videos.data?.hasMore ?? false;
             const nextCursor = videos.data?.max_cursor ?? videos.data?.cursor;
             if (!hasMore || nextCursor === undefined || nextCursor === cursor) break;

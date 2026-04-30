@@ -32,8 +32,25 @@ tableResolver.setProjectMgmtAppToken(projectMgmtAppToken);
 
 app.locals.projectMgmtAppToken = projectMgmtAppToken;
 
-// 启动时强制修复所有残留的“进行中”日志（服务重启意味着任务被中断）
-logService.fixStaleLogs(true).catch((err) => logger.warn('Fix stale logs on startup failed', { error: err.message }));
+// 启动时强制修复所有残留的”进行中”日志（服务重启意味着任务被中断）
+logService.fixStaleLogs(true)
+  .then(async (fixedProjectNames) => {
+    if (!fixedProjectNames || fixedProjectNames.length === 0) return;
+    const projects = await projectService.listProjects();
+    const uniqueNames = [...new Set(fixedProjectNames)];
+    for (const name of uniqueNames) {
+      const project = projects.find(p => p.name === name);
+      if (project && project.status === '执行中') {
+        try {
+          await projectService.updateProjectStatus(project.recordId, '异常终止');
+          logger.info('Fixed stale project status', { projectName: name, recordId: project.recordId });
+        } catch (err) {
+          logger.warn('Failed to fix stale project status', { projectName: name, error: err.message });
+        }
+      }
+    }
+  })
+  .catch((err) => logger.warn('Fix stale logs on startup failed', { error: err.message }));
 
 app.use(helmet());
 app.use(cors());

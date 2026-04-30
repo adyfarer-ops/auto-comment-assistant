@@ -111,6 +111,7 @@ class LogService {
   }
 
   async fixStaleLogs(force = false) {
+    const fixedProjectNames = [];
     try {
       const records = await feishuBitable.searchRecords(this.projectMgmtAppToken, this.logTableId, 'CurrentValue.[状态] = "进行中"');
       const now = Date.now();
@@ -127,6 +128,9 @@ class LogService {
             '错误信息': force ? '服务重启导致任务中断' : '任务超时或系统中断',
           });
           fixed++;
+          if (fields['项目名称']) {
+            fixedProjectNames.push(fields['项目名称']);
+          }
         }
       }
       if (fixed > 0) {
@@ -135,6 +139,7 @@ class LogService {
     } catch (error) {
       logger.error('Failed to fix stale logs', { error: error.message });
     }
+    return fixedProjectNames;
   }
 }
 

@@ -72,11 +72,16 @@ class TikHubApiService {
       logger.warn('TikTok secUid not found', { username });
       return { data: { aweme_list: [] } };
     }
-    return this.request('GET', '/api/v1/tiktok/app/v3/fetch_user_post_videos', {
+    const params = {
       sec_user_id: secUid,
-      cursor,
       count: 50,
-    });
+    };
+    if (cursor) {
+      params.max_cursor = cursor;
+    } else {
+      params.cursor = 0;
+    }
+    return this.request('GET', '/api/v1/tiktok/app/v3/fetch_user_post_videos', params);
   }
 
   // Instagram (v1 for user info, v3/v2 for posts)
@@ -105,17 +110,13 @@ class TikHubApiService {
     });
   }
 
-  // YouTube (via TikHub)
+  // YouTube (via TikHub) — endpoints removed by TikHub, use youtube-api.js instead
   async getYouTubeChannelInfo(handle) {
-    return this.request('GET', '/api/v1/youtube/web/fetch_channel_info', { handle });
+    throw new Error('TikHub YouTube endpoints have been removed (404). Use src/services/youtube-api.js instead.');
   }
 
   async getYouTubeChannelVideos(channelId, pageToken = '') {
-    return this.request('GET', '/api/v1/youtube/web/fetch_channel_videos', {
-      channel_id: channelId,
-      page_token: pageToken,
-      max_results: 50,
-    });
+    throw new Error('TikHub YouTube endpoints have been removed (404). Use src/services/youtube-api.js instead.');
   }
 
   // Reddit
@@ -131,17 +132,13 @@ class TikHubApiService {
     });
   }
 
-  // Facebook
+  // Facebook — endpoints removed by TikHub (404)
   async getFacebookUserInfo(username) {
-    return this.request('GET', '/api/v1/facebook/web/fetch_user_profile', { username });
+    throw new Error('TikHub Facebook endpoints have been removed (404).');
   }
 
   async getFacebookUserPosts(username, cursor = '') {
-    return this.request('GET', '/api/v1/facebook/web/fetch_user_posts', {
-      username,
-      cursor,
-      count: 25,
-    });
+    throw new Error('TikHub Facebook endpoints have been removed (404).');
   }
 }
 
