@@ -506,14 +506,6 @@ class SyncService {
     const maxPages = options.maxPages || 200;
     const startDate = options.startDate ? new Date(options.startDate) : null;
 
-    const shouldBreakByDate = (items, getTimestamp) => {
-      if (!startDate || !items.length) return false;
-      const timestamps = items.map(getTimestamp).filter(Boolean);
-      if (!timestamps.length) return false;
-      const oldestInPage = Math.min(...timestamps);
-      return oldestInPage < startDate.getTime();
-    };
-
     const fetchWithRetry = async (fetchFn, context) => {
       const pageMaxRetries = 3;
       for (let attempt = 0; attempt <= pageMaxRetries; attempt++) {
@@ -651,28 +643,40 @@ class SyncService {
         try {
           let paginationToken = '';
           let page = 0;
+          const endDate = options.endDate ? new Date(options.endDate) : null;
+          let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getInstagramUserPosts(username, paginationToken), 'Instagram');
             const items = posts.data?.data?.items || posts.data?.edges || posts.data?.items || [];
+            let hasDataInRange = false;
             if (items.length) {
-              works.push(...items.map(item => {
+              for (const item of items) {
                 const p = item.node || item;
-                return {
+                const publishTime = p.taken_at ? new Date(p.taken_at * 1000) : null;
+                if (publishTime && (!startDate || publishTime >= startDate) && (!endDate || publishTime <= endDate)) {
+                  hasDataInRange = true;
+                }
+                works.push({
                   workId: p.id || p.shortcode || p.code,
                   title: p.caption?.text?.slice(0, 100) || p.caption?.slice(0, 100) || '',
                   link: p.link || `https://www.instagram.com/p/${p.code}/`,
-                  publishTime: p.taken_at ? new Date(p.taken_at * 1000).toISOString().split('T')[0] : null,
+                  publishTime: publishTime ? publishTime.toISOString().split('T')[0] : null,
                   playCount: parseInt(p.play_count) || parseInt(p.view_count) || parseInt(p.video_play_count) || 0,
                   diggCount: parseInt(p.like_count) || 0,
                   commentCount: parseInt(p.comment_count) || 0,
                   shareCount: parseInt(p.share_count) || 0,
                   collectCount: parseInt(p.save_count) || 0,
-                };
-              }));
+                });
+              }
             }
-            if (shouldBreakByDate(items, p => p.taken_at ? new Date(p.taken_at * 1000).getTime() : null)) {
-              logger.info('Instagram pagination stopped by date boundary', { username, page });
-              break;
+            if (!hasDataInRange) {
+              noDataInRangeStreak++;
+              if (noDataInRangeStreak >= 3) {
+                logger.info('Instagram pagination stopped after 3 consecutive pages without data in range', { username, page });
+                break;
+              }
+            } else {
+              noDataInRangeStreak = 0;
             }
             const nextToken = posts.data?.pagination_token || posts.data?.page_info?.end_cursor;
             if (!nextToken || nextToken === paginationToken) break;
@@ -693,6 +697,8 @@ class SyncService {
         try {
           let cursor = '';
           let page = 0;
+          const endDate = options.endDate ? new Date(options.endDate) : null;
+          let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const tweets = await fetchWithRetry(() => tikhubApi.getXUserTweets(username, cursor), 'X');
             let tweetList = [];
@@ -701,22 +707,34 @@ class SyncService {
             } else if (Array.isArray(tweets.data?.tweets)) {
               tweetList = tweets.data.tweets;
             }
+            let hasDataInRange = false;
             if (tweetList.length) {
-              works.push(...tweetList.map(t => ({
-                workId: t.id || t.rest_id || t.tweet_id,
-                title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
-                link: `https://x.com/${username}/status/${t.id || t.rest_id || t.tweet_id}`,
-                publishTime: t.created_at ? new Date(t.created_at).toISOString().split('T')[0] : null,
-                playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
-                diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
-                commentCount: parseInt(t.replies) || parseInt(t.legacy?.reply_count) || 0,
-                shareCount: parseInt(t.retweets) || parseInt(t.quotes) || parseInt(t.legacy?.retweet_count) || 0,
-                collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
-              })));
+              for (const t of tweetList) {
+                const publishTime = t.created_at ? new Date(t.created_at) : null;
+                if (publishTime && (!startDate || publishTime >= startDate) && (!endDate || publishTime <= endDate)) {
+                  hasDataInRange = true;
+                }
+                works.push({
+                  workId: t.id || t.rest_id || t.tweet_id,
+                  title: t.text?.slice(0, 100) || t.legacy?.full_text?.slice(0, 100) || '',
+                  link: `https://x.com/${username}/status/${t.id || t.rest_id || t.tweet_id}`,
+                  publishTime: publishTime ? publishTime.toISOString().split('T')[0] : null,
+                  playCount: parseInt(t.views) || parseInt(t.views?.count) || 0,
+                  diggCount: parseInt(t.favorites) || parseInt(t.legacy?.favorite_count) || 0,
+                  commentCount: parseInt(t.replies) || parseInt(t.legacy?.reply_count) || 0,
+                  shareCount: parseInt(t.retweets) || parseInt(t.quotes) || parseInt(t.legacy?.retweet_count) || 0,
+                  collectCount: parseInt(t.bookmarks) || parseInt(t.legacy?.bookmark_count) || 0,
+                });
+              }
             }
-            if (shouldBreakByDate(tweetList, t => t.created_at ? new Date(t.created_at).getTime() : null)) {
-              logger.info('X pagination stopped by date boundary', { username, page });
-              break;
+            if (!hasDataInRange) {
+              noDataInRangeStreak++;
+              if (noDataInRangeStreak >= 3) {
+                logger.info('X pagination stopped after 3 consecutive pages without data in range', { username, page });
+                break;
+              }
+            } else {
+              noDataInRangeStreak = 0;
             }
             const nextCursor = tweets.data?.next_cursor;
             if (!nextCursor || nextCursor === cursor) break;
@@ -737,26 +755,40 @@ class SyncService {
         try {
           let after = '';
           let page = 0;
+          const endDate = options.endDate ? new Date(options.endDate) : null;
+          let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getRedditUserPosts(username, after), 'Reddit');
             const edges = posts.data?.postFeed?.elements?.edges || posts.data?.posts || posts.data?.items || [];
             const postList = edges.map(e => e.node || e).filter(Boolean);
+            let hasDataInRange = false;
             if (postList.length) {
-              works.push(...postList.map(p => ({
-                workId: p.id,
-                title: p.postTitle?.slice(0, 100) || p.title?.slice(0, 100) || '',
-                link: p.url || p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
-                publishTime: p.createdAt ? p.createdAt.split('T')[0] : (p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null),
-                playCount: parseInt(p.score) || 0,
-                diggCount: parseInt(p.ups) || 0,
-                commentCount: parseInt(p.commentCount) || parseInt(p.num_comments) || 0,
-                shareCount: 0,
-                collectCount: 0,
-              })));
+              for (const p of postList) {
+                let pt = p.createdAt ? new Date(p.createdAt) : (p.created_utc ? new Date(p.created_utc * 1000) : null);
+                if (pt && (!startDate || pt >= startDate) && (!endDate || pt <= endDate)) {
+                  hasDataInRange = true;
+                }
+                works.push({
+                  workId: p.id,
+                  title: p.postTitle?.slice(0, 100) || p.title?.slice(0, 100) || '',
+                  link: p.url || p.permalink_url || p.permalink || `https://www.reddit.com${p.permalink}`,
+                  publishTime: p.createdAt ? p.createdAt.split('T')[0] : (p.created_utc ? new Date(p.created_utc * 1000).toISOString().split('T')[0] : null),
+                  playCount: parseInt(p.score) || 0,
+                  diggCount: parseInt(p.ups) || 0,
+                  commentCount: parseInt(p.commentCount) || parseInt(p.num_comments) || 0,
+                  shareCount: 0,
+                  collectCount: 0,
+                });
+              }
             }
-            if (shouldBreakByDate(postList, p => p.createdAt ? new Date(p.createdAt).getTime() : (p.created_utc ? new Date(p.created_utc * 1000).getTime() : null))) {
-              logger.info('Reddit pagination stopped by date boundary', { username, page });
-              break;
+            if (!hasDataInRange) {
+              noDataInRangeStreak++;
+              if (noDataInRangeStreak >= 3) {
+                logger.info('Reddit pagination stopped after 3 consecutive pages without data in range', { username, page });
+                break;
+              }
+            } else {
+              noDataInRangeStreak = 0;
             }
             const pageInfo = posts.data?.postFeed?.elements?.pageInfo;
             const nextAfter = pageInfo?.endCursor || posts.data?.after;
@@ -779,25 +811,39 @@ class SyncService {
         try {
           let cursor = '';
           let page = 0;
+          const endDate = options.endDate ? new Date(options.endDate) : null;
+          let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getFacebookUserPosts(username, cursor), 'Facebook');
             const postList = posts.data?.posts || posts.data?.items || [];
+            let hasDataInRange = false;
             if (postList.length) {
-              works.push(...postList.map(p => ({
-                workId: p.id,
-                title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
-                link: p.permalink_url || `https://www.facebook.com/${p.id}`,
-                publishTime: p.created_time ? p.created_time.split('T')[0] : null,
-                playCount: parseInt(p.insights?.find(i => i.name === 'post_impressions')?.values?.[0]?.value) || 0,
-                diggCount: parseInt(p.likes?.summary?.total_count) || 0,
-                commentCount: parseInt(p.comments?.summary?.total_count) || 0,
-                shareCount: parseInt(p.shares?.count) || 0,
-                collectCount: 0,
-              })));
+              for (const p of postList) {
+                const publishTime = p.created_time ? new Date(p.created_time) : null;
+                if (publishTime && (!startDate || publishTime >= startDate) && (!endDate || publishTime <= endDate)) {
+                  hasDataInRange = true;
+                }
+                works.push({
+                  workId: p.id,
+                  title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
+                  link: p.permalink_url || `https://www.facebook.com/${p.id}`,
+                  publishTime: publishTime ? publishTime.toISOString().split('T')[0] : null,
+                  playCount: parseInt(p.insights?.find(i => i.name === 'post_impressions')?.values?.[0]?.value) || 0,
+                  diggCount: parseInt(p.likes?.summary?.total_count) || 0,
+                  commentCount: parseInt(p.comments?.summary?.total_count) || 0,
+                  shareCount: parseInt(p.shares?.count) || 0,
+                  collectCount: 0,
+                });
+              }
             }
-            if (shouldBreakByDate(postList, p => p.created_time ? new Date(p.created_time).getTime() : null)) {
-              logger.info('Facebook pagination stopped by date boundary', { username, page });
-              break;
+            if (!hasDataInRange) {
+              noDataInRangeStreak++;
+              if (noDataInRangeStreak >= 3) {
+                logger.info('Facebook pagination stopped after 3 consecutive pages without data in range', { username, page });
+                break;
+              }
+            } else {
+              noDataInRangeStreak = 0;
             }
             const nextCursor = posts.data?.paging?.cursors?.after || posts.data?.next;
             if (!nextCursor || nextCursor === cursor) break;
