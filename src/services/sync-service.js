@@ -537,9 +537,12 @@ class SyncService {
           let cursor = 0;
           let page = 0;
           const seenWorkIds = new Set();
+          const endDate = options.endDate ? new Date(options.endDate) : null;
+          let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor), 'TikTok');
             const items = videos.data?.aweme_list || videos.data?.itemList || videos.data?.videos || [];
+            let hasDataInRange = false;
             if (items.length) {
               for (const v of items) {
                 const workId = v.video_id || v.aweme_id || v.id;
@@ -554,11 +557,15 @@ class SyncService {
                 if (parseInt(stats.play_count) === 0 && parseInt(stats.digg_count) > 0) {
                   logger.warn('TikHub returned playCount=0, possible data source limitation', { username });
                 }
+                const publishTime = v.create_time ? new Date(v.create_time * 1000) : null;
+                if (publishTime && (!startDate || publishTime >= startDate) && (!endDate || publishTime <= endDate)) {
+                  hasDataInRange = true;
+                }
                 works.push({
                   workId: key,
                   title: v.desc || v.title || '',
                   link: v.share_url || `https://www.tiktok.com/@${username}/video/${key}`,
-                  publishTime: v.create_time ? new Date(v.create_time * 1000).toISOString().split('T')[0] : null,
+                  publishTime: publishTime ? publishTime.toISOString().split('T')[0] : null,
                   playCount: parseInt(stats.play_count) || 0,
                   diggCount: parseInt(stats.digg_count) || 0,
                   commentCount: parseInt(stats.comment_count) || 0,
@@ -567,7 +574,15 @@ class SyncService {
                 });
               }
             }
-            // TikTok API 返回顺序不严格按时间倒序，不能使用日期边界提前终止
+            if (!hasDataInRange) {
+              noDataInRangeStreak++;
+              if (noDataInRangeStreak >= 3) {
+                logger.info('TikTok pagination stopped after 3 consecutive pages without data in range', { username, page });
+                break;
+              }
+            } else {
+              noDataInRangeStreak = 0;
+            }
             const hasMore = videos.data?.has_more ?? videos.data?.hasMore ?? false;
             const nextCursor = videos.data?.max_cursor ?? videos.data?.cursor;
             if (!hasMore || nextCursor === undefined || nextCursor === cursor) break;
