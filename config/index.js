@@ -42,7 +42,7 @@ module.exports = {
   },
 
   proxy: {
-    httpsProxy: process.env.HTTPS_PROXY,
+    httpsProxy: process.env.APP_HTTPS_PROXY || process.env.HTTPS_PROXY,
   },
 
   project: {
