@@ -2,6 +2,7 @@ const config = require('../../config');
 const feishuBitable = require('./feishu-bitable');
 const tikhubApi = require('./tikhub-api');
 const youtubeApi = require('./youtube-api');
+const ytDlpService = require('./yt-dlp-service');
 const platformResolver = require('./platform-resolver');
 const logService = require('./log-service');
 const logger = require('../utils/logger');
@@ -811,53 +812,17 @@ class SyncService {
       }
       case 'FB': {
         try {
-          let cursor = '';
-          let page = 0;
-          let noDataInRangeStreak = 0;
-          while (page < maxPages) {
-            const posts = await fetchWithRetry(() => tikhubApi.getFacebookUserPosts(username, cursor), 'Facebook');
-            const postList = posts.data?.posts || posts.data?.items || [];
-            let hasDataInRange = false;
-            if (postList.length) {
-              for (const p of postList) {
-                const publishTime = p.created_time ? new Date(p.created_time) : null;
-                if (publishTime && (!startDate || publishTime >= startDate) && (!endDate || publishTime <= endDate)) {
-                  hasDataInRange = true;
-                }
-                works.push({
-                  workId: p.id,
-                  title: p.message?.slice(0, 100) || p.story?.slice(0, 100) || '',
-                  link: p.permalink_url || `https://www.facebook.com/${p.id}`,
-                  publishTime: publishTime ? publishTime.toISOString().split('T')[0] : null,
-                  playCount: parseInt(p.insights?.find(i => i.name === 'post_impressions')?.values?.[0]?.value) || 0,
-                  diggCount: parseInt(p.likes?.summary?.total_count) || 0,
-                  commentCount: parseInt(p.comments?.summary?.total_count) || 0,
-                  shareCount: parseInt(p.shares?.count) || 0,
-                  collectCount: 0,
-                });
-              }
-            }
-            if (!hasDataInRange) {
-              noDataInRangeStreak++;
-              if (noDataInRangeStreak >= 3) {
-                logger.info('Facebook pagination stopped after 3 consecutive pages without data in range', { username, page });
-                break;
-              }
-            } else {
-              noDataInRangeStreak = 0;
-            }
-            const nextCursor = posts.data?.paging?.cursors?.after || posts.data?.next;
-            if (!nextCursor || nextCursor === cursor) break;
-            cursor = nextCursor;
-            page++;
-            await this._sleep(300);
-          }
+          const fbWorks = await fetchWithRetry(
+            () => ytDlpService.getFacebookPageVideos(username, {
+              maxItems: maxPages * 20,
+              startDate: options.startDate,
+              endDate: options.endDate,
+            }),
+            'Facebook'
+          );
+          works.push(...fbWorks);
         } catch (error) {
-          const status = error.response?.status;
-          if (status === 402) {
-            throw new Error(`TikHub API 余额不足(${status})，请充值后重试: ${error.message}`);
-          }
-          logger.error('Facebook API failed after retries, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
+          logger.error('Facebook yt-dlp extraction failed after retries, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
         }
         break;
       }
