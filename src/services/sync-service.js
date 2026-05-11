@@ -223,8 +223,12 @@ class SyncService {
             const filteredWorks = works.filter(work => {
               if (!work.publishTime) return false;
               const publishDate = new Date(work.publishTime);
-              if (parsedStart && publishDate < parsedStart) return false;
-              if (parsedEnd && publishDate > parsedEnd) return false;
+              if (isNaN(publishDate.getTime())) return false;
+              const dateOnly = new Date(publishDate.getFullYear(), publishDate.getMonth(), publishDate.getDate());
+              const startOnly = parsedStart ? new Date(parsedStart.getFullYear(), parsedStart.getMonth(), parsedStart.getDate()) : null;
+              const endOnly = parsedEnd ? new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate()) : null;
+              if (startOnly && dateOnly < startOnly) return false;
+              if (endOnly && dateOnly > endOnly) return false;
               return true;
             });
 
@@ -239,12 +243,11 @@ class SyncService {
             let publishedCount = filteredWorks.length;
 
             if (detailTableId) {
-              if (filteredWorks.length > 0) {
-                const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id, false);
-                createdCount = syncResult.createdCount || 0;
-                updatedCount = syncResult.updatedCount || 0;
-                totalWorks += filteredWorks.length;
-              }
+              const syncResult = await this.syncWorksToDetailTable(detailTableId, filteredWorks, account.record_id, true);
+              createdCount = syncResult.createdCount || 0;
+              updatedCount = syncResult.updatedCount || 0;
+              totalWorks += filteredWorks.length;
+
               const statsResult = await this.updateAccountStats(account, planTableId, filteredWorks, followersCount, platform.code, detailTableId, startDate, endDate);
               if (statsResult) {
                 publishedCount = statsResult.publishedCount;
@@ -504,7 +507,10 @@ class SyncService {
   async fetchPlatformWorks(platformCode, username, options = {}) {
     const works = [];
     const maxPages = options.maxPages || 200;
-    const startDate = options.startDate ? new Date(options.startDate) : null;
+    const rawStart = options.startDate ? new Date(options.startDate) : null;
+    const startDate = rawStart ? new Date(rawStart.getFullYear(), rawStart.getMonth(), rawStart.getDate()) : null;
+    const rawEnd = options.endDate ? new Date(options.endDate) : null;
+    const endDate = rawEnd ? new Date(rawEnd.getFullYear(), rawEnd.getMonth(), rawEnd.getDate(), 23, 59, 59, 999) : null;
 
     const fetchWithRetry = async (fetchFn, context) => {
       const pageMaxRetries = 3;
@@ -529,7 +535,6 @@ class SyncService {
           let cursor = 0;
           let page = 0;
           const seenWorkIds = new Set();
-          const endDate = options.endDate ? new Date(options.endDate) : null;
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor), 'TikTok');
@@ -643,7 +648,6 @@ class SyncService {
         try {
           let paginationToken = '';
           let page = 0;
-          const endDate = options.endDate ? new Date(options.endDate) : null;
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getInstagramUserPosts(username, paginationToken), 'Instagram');
@@ -697,7 +701,6 @@ class SyncService {
         try {
           let cursor = '';
           let page = 0;
-          const endDate = options.endDate ? new Date(options.endDate) : null;
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const tweets = await fetchWithRetry(() => tikhubApi.getXUserTweets(username, cursor), 'X');
@@ -755,7 +758,6 @@ class SyncService {
         try {
           let after = '';
           let page = 0;
-          const endDate = options.endDate ? new Date(options.endDate) : null;
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getRedditUserPosts(username, after), 'Reddit');
@@ -811,7 +813,6 @@ class SyncService {
         try {
           let cursor = '';
           let page = 0;
-          const endDate = options.endDate ? new Date(options.endDate) : null;
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
             const posts = await fetchWithRetry(() => tikhubApi.getFacebookUserPosts(username, cursor), 'Facebook');
@@ -970,7 +971,7 @@ class SyncService {
       }
     }
 
-    // 删除重复记录（旧代码遗留），以及不在新数据中的旧记录（仅在全量同步时）
+    // 删除重复记录（旧代码遗留），以及不在新数据中的旧记录
     const toDelete = [...duplicateRecordIds];
     if (allowDelete) {
       for (const [workId, recordId] of existingMap) {
@@ -1044,8 +1045,11 @@ class SyncService {
             pt = new Date(String(pt).replace(/-/g, '/'));
           }
           if (isNaN(pt.getTime())) return false;
-          if (parsedStart && pt < parsedStart) return false;
-          if (parsedEnd && pt > parsedEnd) return false;
+          const dateOnly = new Date(pt.getFullYear(), pt.getMonth(), pt.getDate());
+          const startOnly = parsedStart ? new Date(parsedStart.getFullYear(), parsedStart.getMonth(), parsedStart.getDate()) : null;
+          const endOnly = parsedEnd ? new Date(parsedEnd.getFullYear(), parsedEnd.getMonth(), parsedEnd.getDate()) : null;
+          if (startOnly && dateOnly < startOnly) return false;
+          if (endOnly && dateOnly > endOnly) return false;
           return true;
         });
         publishedCount = filteredRecords.length;
