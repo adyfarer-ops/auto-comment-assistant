@@ -811,19 +811,7 @@ class SyncService {
         break;
       }
       case 'FB': {
-        try {
-          const fbWorks = await fetchWithRetry(
-            () => ytDlpService.getFacebookPageVideos(username, {
-              maxItems: maxPages * 20,
-              startDate: options.startDate,
-              endDate: options.endDate,
-            }),
-            'Facebook'
-          );
-          works.push(...fbWorks);
-        } catch (error) {
-          logger.error('Facebook yt-dlp extraction failed after retries, returning partial works', { username, error: error.message, platformCode: 'FB', fetchedWorks: works.length });
-        }
+        logger.warn('Facebook video fetching is not implemented yet', { username, platformCode: 'FB' });
         break;
       }
       default:
