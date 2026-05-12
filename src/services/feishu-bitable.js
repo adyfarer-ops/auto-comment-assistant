@@ -83,7 +83,21 @@ class FeishuBitableService {
   }
 
   async getAppTables(appToken) {
-    return this.request('GET', `/apps/${appToken}/tables`);
+    const allItems = [];
+    let pageToken = null;
+
+    do {
+      const path = pageToken
+        ? `/apps/${appToken}/tables?page_token=${encodeURIComponent(pageToken)}`
+        : `/apps/${appToken}/tables`;
+      const result = await this.request('GET', path);
+      if (result.items) {
+        allItems.push(...result.items);
+      }
+      pageToken = result.has_more ? (result.page_token || null) : null;
+    } while (pageToken);
+
+    return { items: allItems };
   }
 
   // === Table ===

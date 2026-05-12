@@ -233,7 +233,14 @@ class SyncService {
               return true;
             });
 
-            const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+            let detailTableId = null;
+            let detailTableError = null;
+            try {
+              detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+            } catch (error) {
+              detailTableError = error.message || String(error);
+              logger.warn('Failed to get or create detail table, will skip detail sync', { accountName, error: detailTableError, traceId });
+            }
 
             let createdCount = 0;
             let updatedCount = 0;
@@ -300,6 +307,15 @@ class SyncService {
                 logRecordId: accountLogId,
                 startTime: accountStartTime,
                 operationType: '周期增量同步账号',
+                errorMessage: detailTableError || '明细表不存在或创建失败',
+                stats: {
+                  original: works.length,
+                  filtered: filteredWorks.length,
+                  fetched: filteredWorks.length,
+                  created: createdCount,
+                  updated: updatedCount,
+                  skipped: skippedCount,
+                },
               });
             }
           } catch (error) {
@@ -423,8 +439,16 @@ class SyncService {
       triggerSource,
     });
 
+    let detailTableId = null;
+    let detailTableError = null;
     try {
-      const detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+      detailTableId = await this.getOrCreateDetailTable(projectName, accountName, platform.code);
+    } catch (error) {
+      detailTableError = error.message || String(error);
+      logger.warn('Failed to get or create detail table, will skip detail sync', { accountName, error: detailTableError, traceId });
+    }
+
+    try {
       const works = await this.fetchPlatformWorks(platform.code, username);
       const followersCount = await this.fetchPlatformFollowers(platform.code, username);
 
@@ -434,18 +458,34 @@ class SyncService {
       }
 
       logger.info('Account sync completed', { accountName, worksCount: works.length, traceId });
-      await logService.logSyncSuccess(projectName, {
-        accountName,
-        masterTableId: planTableId,
-        detailTableId,
-        accountRecordId: account.record_id,
-        platformCode: platform.code,
-        traceId,
-        triggerSource,
-        logRecordId: accountLogId,
-        startTime: accountStartTime,
-        stats: { fetched: works.length },
-      });
+      if (detailTableId) {
+        await logService.logSyncSuccess(projectName, {
+          accountName,
+          masterTableId: planTableId,
+          detailTableId,
+          accountRecordId: account.record_id,
+          platformCode: platform.code,
+          traceId,
+          triggerSource,
+          logRecordId: accountLogId,
+          startTime: accountStartTime,
+          stats: { fetched: works.length },
+        });
+      } else {
+        await logService.logSyncEnd(projectName, '跳过', {
+          accountName,
+          masterTableId: planTableId,
+          detailTableId,
+          accountRecordId: account.record_id,
+          platformCode: platform.code,
+          traceId,
+          triggerSource,
+          logRecordId: accountLogId,
+          startTime: accountStartTime,
+          stats: { fetched: works.length },
+          errorMessage: detailTableError || '明细表不存在或创建失败',
+        });
+      }
 
       return { worksCount: works.length };
     } catch (error) {
@@ -827,9 +867,11 @@ class SyncService {
     const shortName = `${prefix}-${normalizedAccount}${platformCode}-作品详情`;
     const fullName = `${prefix}-${normalizedAccount}${platformResolver.getPlatformName(platformCode)}-作品详情`;
 
+    const findMatched = (tables) => tables.items?.find(t => t.name === shortName || t.name === fullName);
+
     try {
       const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
-      const matched = tables.items?.find(t => t.name === shortName || t.name === fullName);
+      const matched = findMatched(tables);
 
       if (matched) {
         logger.info('Detail table found', { tableName: matched.name, tableId: matched.table_id });
@@ -840,8 +882,21 @@ class SyncService {
       const newTableId = await projectService.createDetailTable(projectName, accountName, platformCode);
       return newTableId;
     } catch (error) {
+      const isDuplicate = error.message?.includes('TableNameDuplicated') || error.message?.includes('1254013');
+      if (isDuplicate) {
+        try {
+          const tables = await feishuBitable.getAppTables(this.projectMgmtAppToken);
+          const matched = findMatched(tables);
+          if (matched) {
+            logger.info('Detail table found after TableNameDuplicated', { tableName: matched.name, tableId: matched.table_id });
+            return matched.table_id;
+          }
+        } catch (e) {
+          logger.warn('Failed to re-fetch tables after TableNameDuplicated', { shortName, error: e.message });
+        }
+      }
       logger.error('Failed to lookup or create detail table', { shortName, fullName, error: error.message });
-      return null;
+      throw error;
     }
   }
 
