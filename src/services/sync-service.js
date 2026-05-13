@@ -220,6 +220,7 @@ class SyncService {
             const works = await this.fetchPlatformWorks(platform.code, username, {
               startDate: options.startDate || startDate,
               endDate: options.endDate || endDate,
+              homeLink,
             });
             const filteredWorks = works.filter(work => {
               if (!work.publishTime) return false;
@@ -246,7 +247,7 @@ class SyncService {
             let updatedCount = 0;
             let skippedCount = 0;
 
-            const followersCount = await this.fetchPlatformFollowers(platform.code, username);
+            const followersCount = await this.fetchPlatformFollowers(platform.code, username, homeLink);
             let totalPlayCount = filteredWorks.reduce((sum, w) => sum + (w.playCount || 0), 0);
             let publishedCount = filteredWorks.length;
 
@@ -449,8 +450,8 @@ class SyncService {
     }
 
     try {
-      const works = await this.fetchPlatformWorks(platform.code, username);
-      const followersCount = await this.fetchPlatformFollowers(platform.code, username);
+      const works = await this.fetchPlatformWorks(platform.code, username, { homeLink });
+      const followersCount = await this.fetchPlatformFollowers(platform.code, username, homeLink);
 
       if (detailTableId) {
         await this.syncWorksToDetailTable(detailTableId, works, account.record_id);
@@ -504,12 +505,12 @@ class SyncService {
     }
   }
 
-  async fetchPlatformFollowers(platformCode, username) {
+  async fetchPlatformFollowers(platformCode, username, homeLink = null) {
     try {
       switch (platformCode) {
         case 'TK':
         case 'DY': {
-          const ids = await tikhubApi.getTikTokUserInfo(username);
+          const ids = await tikhubApi.getTikTokUserInfo(username, homeLink);
           const userId = ids?.data?.user_id;
           const secUid = ids?.data?.sec_user_id;
           if (!secUid) return 0;
@@ -578,7 +579,7 @@ class SyncService {
           const seenWorkIds = new Set();
           let noDataInRangeStreak = 0;
           while (page < maxPages) {
-            const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor), 'TikTok');
+            const videos = await fetchWithRetry(() => tikhubApi.getTikTokUserVideos(username, cursor, options.homeLink), 'TikTok');
             const items = videos.data?.aweme_list || videos.data?.itemList || videos.data?.videos || [];
             let hasDataInRange = false;
             if (items.length) {

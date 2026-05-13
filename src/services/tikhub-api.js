@@ -57,16 +57,42 @@ class TikHubApiService {
   }
 
   // TikTok (app/v3 endpoints aligned with old project)
-  async getTikTokUserInfo(username) {
-    return this.request('GET', '/api/v1/tiktok/app/v3/get_user_id_and_sec_user_id_by_username', { username });
+  async getTikTokUserInfo(username, url = null) {
+    try {
+      return await this.request('GET', '/api/v1/tiktok/app/v3/get_user_id_and_sec_user_id_by_username', { username });
+    } catch (error) {
+      if (url && error.response?.status === 400) {
+        logger.warn('TikHub app/v3 username lookup failed, falling back to web URL lookup', { username });
+        const secUid = await this.getTikTokSecUidByUrl(url);
+        if (secUid) {
+          return { data: { sec_user_id: secUid } };
+        }
+      }
+      throw error;
+    }
+  }
+
+  async getTikTokSecUidByUrl(url) {
+    try {
+      const result = await this.request('GET', '/api/v1/tiktok/web/get_sec_user_id', { url });
+      const secUid = result?.data;
+      if (secUid && typeof secUid === 'string') {
+        return secUid;
+      }
+      logger.warn('TikHub web URL lookup returned no sec_uid', { url, data: result?.data });
+      return null;
+    } catch (error) {
+      logger.error('TikHub web URL lookup failed', { url, error: error.message });
+      return null;
+    }
   }
 
   async getTikTokUserProfile(userId, secUid) {
     return this.request('GET', '/api/v1/tiktok/app/v3/handler_user_profile', { user_id: userId, sec_user_id: secUid });
   }
 
-  async getTikTokUserVideos(username, cursor = 0) {
-    const ids = await this.getTikTokUserInfo(username);
+  async getTikTokUserVideos(username, cursor = 0, url = null) {
+    const ids = await this.getTikTokUserInfo(username, url);
     const secUid = ids?.data?.sec_user_id;
     if (!secUid) {
       logger.warn('TikTok secUid not found', { username });
